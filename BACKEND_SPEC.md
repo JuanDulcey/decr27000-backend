@@ -66,6 +66,7 @@ backend/
   "version": "1.0.0",
   "description": "API REST para DECR 27000 (AuditSys Mini) - Gestión de Auditorías ISO/IEC 27002:2022",
   "main": "src/server.js",
+  "packageManager": "pnpm@9.12.0",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
@@ -620,9 +621,8 @@ services:
   - type: web
     name: decr27000-backend
     env: node
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: pnpm install
+    startCommand: pnpm start
     envVars:
       - key: NODE_ENV
         value: production

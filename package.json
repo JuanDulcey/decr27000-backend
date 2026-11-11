@@ -1,9 +1,12 @@
 {
   "name": "decr27000-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "API REST para DECR 27000 (AuditSys Mini) - Gestión de Auditorías ISO/IEC 27002:2022",
   "main": "index.js",
+  "packageManager": "pnpm@9.12.0",
   "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "private": true
