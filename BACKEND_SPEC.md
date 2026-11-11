@@ -11,24 +11,23 @@
   - **ISO 19011:2018**: Directrices para la auditoría de los sistemas de gestión (principios de integridad, presentación imparcial, debido cuidado profesional, enfoque basado en la evidencia y enfoque basado en riesgos).
   - **ISO/IEC 27001:2022**: Requisitos del Sistema de Gestión de Seguridad de la Información (SGSI) y Anexo A (93 controles).
   - **ISO/IEC 27002:2022**: Controles de seguridad de la información (organizados en 4 categorías: **5. Organizacionales [37]**, **6. Personas/TTHH [8]**, **7. Físicos [14]** y **8. Tecnológicos [34]** = **93 controles en total**).
-- **Arquitectura del Repositorio**: Monorepo con dos directorios raíz independientes:
-  - `/backend`: API RESTful en **Node.js + Express + PostgreSQL (`pg`)**, desplegable en **Render** (o cualquier servidor cloud/AWS).
-  - `/frontend`: Aplicación Web Multipágina (MPA) en **HTML5 + CSS3 (Variables CSS + Tailwind CDN) + Vanilla JavaScript (ES6 Modules)**, desplegable en **Vercel**.
+- **Arquitectura del Repositorio**: Dos repositorios sincronizados en GitHub:
+  - **Backend (`JuanDulcey/decr27000-backend`)**: API RESTful en **Node.js + Express + PostgreSQL (`pg`)**, desplegada en **Render** en la URL oficial: `https://decr27000-backend.onrender.com` (prefijo API: `https://decr27000-backend.onrender.com/api`).
+  - **Frontend (`JuanDulcey/decr27000-frontend`)**: Aplicación Web Multipágina (MPA) en **HTML5 + CSS3 (Variables CSS + Tailwind CDN) + Vanilla JavaScript (ES6 Modules)**, desplegada en **Vercel** en la URL oficial: `https://decr27000-frontend.vercel.app`.
 - **Base de Datos**: **PostgreSQL** (compatible con AWS RDS, Neon, Supabase o PostgreSQL local) conectada mediante la variable de entorno `DATABASE_URL` y el driver nativo `pg` con consultas SQL parametrizadas (sin ORM opaco, para evidenciar explícitamente llaves foráneas, restricciones `CHECK` y funciones SQL exigidas por la rúbrica académica).
 
 ---
 
-## 2. Estructura de Carpetas del Backend (`/backend`)
+## 2. Estructura de Carpetas del Repositorio Backend (`decr27000-backend`)
 
-La IA debe generar exactamente la siguiente estructura modular dentro de la carpeta `/backend` (cumpliendo el requisito no funcional de mantenibilidad **RNF06**):
+La IA debe generar exactamente la siguiente estructura modular en la raíz del repositorio `decr27000-backend` (cumpliendo el requisito no funcional de mantenibilidad **RNF06**):
 
 ```text
-backend/
+decr27000-backend/
 ├── package.json
 ├── .env.example
 ├── render.yaml
-├── sql/
-│   └── init.sql                      # Copia o enlace a ../context/SEED_93_CONTROLES_Y_EMPRESA_ABC.sql
+├── SEED_93_CONTROLES_Y_EMPRESA_ABC.sql # Script SQL completo en la raíz (y/o en sql/init.sql)
 └── src/
     ├── server.js                     # Punto de entrada: inicia servidor HTTP y verifica conexión BD
     ├── app.js                        # Configuración de Express, CORS, JSON body-parser, rutas y manejo de errores
@@ -88,9 +87,12 @@ backend/
 ```env
 PORT=4000
 DATABASE_URL=postgresql://usuario:password@host:5432/auditsys_db?sslmode=require
-JWT_SECRET=auditsys_iso27002_secret_key_2026_segura
+JWT_SECRET=decr27000_iso27002_secret_key_2026_segura
 CORS_ORIGIN=*
 ```
+
+> **Configuración de CORS en `src/app.js`**:
+> Habilitar `app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }))` para permitir comunicación total sin bloqueos desde `https://decr27000-frontend.vercel.app`, subdominios preview de Vercel (`*.vercel.app`) y entornos locales (`http://localhost:*`).
 
 > **Nota sobre Conexión a PostgreSQL (`src/config/db.js`)**:
 > Configurar `new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false } })` para que funcione sin cambios tanto en PostgreSQL local como en AWS RDS, Neon o Supabase.
