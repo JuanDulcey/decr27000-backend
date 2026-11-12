@@ -8,9 +8,12 @@
 
 - **Nombre del Sistema**: AuditSys Mini – Sistema de Gestión de Auditorías de Sistemas de Información.
 - **Referentes Normativos**:
-  - **ISO 19011:2018**: Directrices para la auditoría de los sistemas de gestión (principios de integridad, presentación imparcial, debido cuidado profesional, enfoque basado en la evidencia y enfoque basado en riesgos).
-  - **ISO/IEC 27001:2022**: Requisitos del Sistema de Gestión de Seguridad de la Información (SGSI) y Anexo A (93 controles).
-  - **ISO/IEC 27002:2022**: Controles de seguridad de la información (organizados en 4 categorías: **5. Organizacionales [37]**, **6. Personas/TTHH [8]**, **7. Físicos [14]** y **8. Tecnológicos [34]** = **93 controles en total**).
+  - **ISO 19011:2026** (4.ª edición, publicada en mayo de 2026; reemplaza y retira a ISO 19011:2018): Directrices para la auditoría de los sistemas de gestión. Conserva los **7 principios de auditoría**: integridad, presentación imparcial, debido cuidado profesional, confidencialidad, independencia, enfoque basado en la evidencia y enfoque basado en riesgos. Novedades relevantes para este proyecto: los métodos de auditoría **presencial, remoto e híbrido** se tratan como opciones equivalentes en toda la auditoría (planificación, ejecución e informe), se añade la definición formal de "métodos de auditoría remota" y la competencia en TIC del auditor (fiabilidad de la evidencia obtenida por medios digitales). No es una norma certificable.
+  - **ISO/IEC 27001:2022** (incluida la **Enmienda 1:2024** sobre cambio climático en los numerales 4.1 y 4.2, que no modifica el Anexo A): Requisitos del Sistema de Gestión de Seguridad de la Información (SGSI) y Anexo A (93 controles). **No existe edición 2026**: la versión 2022 sigue vigente.
+  - **ISO/IEC 27002:2022**: Controles de seguridad de la información (organizados en 4 categorías: **5. Organizacionales [37]**, **6. Personas/TTHH [8]**, **7. Físicos [14]** y **8. Tecnológicos [34]** = **93 controles en total**). **No existe edición 2026**: la versión 2022 sigue vigente.
+  - **Referentes complementarios** (opcionales según el documento orientador): ISO 31000:2018 (gestión del riesgo; sigue vigente, su revisión está en borrador de comité), ISO/IEC 25010:2023 (calidad del producto de software; el documento orientador exige indicar la edición utilizada) e ISO/IEC 27000:2026 (vocabulario de la familia 27000, publicada en 2026).
+
+> **Nota de vigencia normativa (verificada en noviembre de 2026)**: los documentos académicos de origen (`Proyecto_Academico_AuditSys_Mini.docx` y `AuditSys_Mini_Proyecto_Ejemplo.docx`) citan **ISO 19011:2018**, que fue retirada al publicarse **ISO 19011:2026**. En todo el sistema (semilla SQL, valor por defecto de `referentes`, informe y frontend) se usa la cadena oficial: **`ISO 19011:2026; ISO/IEC 27001:2022; ISO/IEC 27002:2022`**. Los 93 controles del catálogo corresponden a ISO/IEC 27002:2022 (la estructura anterior de 2013, con 114 controles en 14 dominios, **no** se usa).
 - **Arquitectura del Repositorio**: Dos repositorios sincronizados en GitHub:
   - **Backend (`JuanDulcey/decr27000-backend`)**: API RESTful en **Node.js + Express + PostgreSQL (`pg`)**, desplegada en **Render** en la URL oficial: `https://decr27000-backend.onrender.com` (prefijo API: `https://decr27000-backend.onrender.com/api`).
   - **Frontend (`JuanDulcey/decr27000-frontend`)**: Aplicación Web Multipágina (MPA) en **HTML5 + CSS3 (Variables CSS + Tailwind CDN) + Vanilla JavaScript (ES6 Modules)**, desplegada en **Vercel** en la URL oficial: `https://decr27000-frontend.vercel.app`.
@@ -57,7 +60,7 @@ decr27000-backend/
         └── informes.routes.js
 ```
 
-### 2.1. Dependencias (`backend/package.json`)
+### 2.1. Dependencias (`package.json`)
 
 ```json
 {
@@ -82,7 +85,7 @@ decr27000-backend/
 }
 ```
 
-### 2.2. Variables de Entorno (`backend/.env.example`)
+### 2.2. Variables de Entorno (`.env.example`)
 
 ```env
 PORT=4000
@@ -113,7 +116,9 @@ BACKEND_URL=https://decr27000-backend.onrender.com
 ## 3. Modelo de Datos Relacional y Reglas de Integridad (PostgreSQL)
 
 El archivo SQL completo con las 8 tablas, los **93 controles oficiales de ISO/IEC 27002:2022** y la auditoría completa de **Empresa ABC** ya se encuentra generado en:
-`context/SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` (el script `src/config/initDb.js` debe leer este archivo o `backend/sql/init.sql`, ejecutarlo y asegurarse de que las contraseñas de los usuarios semilla queden hasheadas con `bcryptjs` para la clave `Audit2026*`).
+`SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` (raíz del repositorio `decr27000-backend`; el script `src/config/initDb.js` debe leer este archivo, ejecutarlo y asegurarse de que las contraseñas de los usuarios semilla queden hasheadas con `bcryptjs` para la clave `Audit2026*`). El script fue probado en PostgreSQL 16: crea las 8 tablas, carga 93 controles (37/8/14/34) y reproduce los indicadores de `CP-09` (33,3 % y 54,2 %).
+
+> **Fidelidad del catálogo frente a ISO/IEC 27002:2022**: los textos provienen del archivo docente `CONTROLES APLICABLES ISO 27002 2022 (20262).xlsx` (el sufijo "20262" corresponde al periodo académico 2026-2, no a una edición de la norma) y del documento `puntos de control con ejemplos ISO 27002 2022.docx`. En la semilla se corrigieron errores de traducción para alinearlos con la norma: 5.1 (el criterio era el *propósito* y no el enunciado del control), 5.4, 5.24, 5.25, 5.31, 6.1, 6.3, 6.8, 7.3, 7.6, 7.7, 7.8, 7.11, 7.12, 8.1, 8.15, 8.31, 8.32 y 8.34. Los textos siguen siendo una traducción académica: el auditor debe validarlos con el texto oficial de la norma, como advierte el documento de ejemplo.
 
 ### 3.1. Definición de las 8 Tablas y Restricciones Exigidas por la Rúbrica
 
@@ -148,7 +153,7 @@ CREATE TABLE auditoria (
   alcance       TEXT NOT NULL,
   fecha_inicio  DATE NOT NULL,
   fecha_fin     DATE NOT NULL,
-  referentes    VARCHAR(250) NOT NULL DEFAULT 'ISO 19011:2018; ISO/IEC 27001:2022; ISO/IEC 27002:2022',
+  referentes    VARCHAR(250) NOT NULL DEFAULT 'ISO 19011:2026; ISO/IEC 27001:2022; ISO/IEC 27002:2022',
   estado        VARCHAR(15) NOT NULL DEFAULT 'BORRADOR'
     CHECK (estado IN ('BORRADOR', 'EN_EJECUCION', 'EN_REVISION', 'CERRADA')),
   id_auditor    INTEGER NOT NULL REFERENCES usuario(id_usuario) ON DELETE RESTRICT,
@@ -333,7 +338,13 @@ El Backend debe validar obligatoriamente todas las reglas en el servidor (retorn
    - Para avanzar la auditoría a `'EN_REVISION'` (o cerrar/generar informe definitivo), todo control evaluado como `'IMPLEMENTADO'` o `'PARCIAL'` debe tener **al menos 1 evidencia registrada** en la tabla `evidencia`. Además, en la respuesta de cada evaluación el backend calcula `requiere_evidencia_faltante: (estado === 'IMPLEMENTADO' || estado === 'PARCIAL') && evidencias.length === 0`.Si al intentar pasar a `'EN_REVISION'` algún control `'IMPLEMENTADO'` o `'PARCIAL'` no tiene evidencia, rechazar con `400` indicando qué controles (`codigo_iso`) carecen de evidencia (`CP-06`).
 5. **RN05 / CP-07 (Integridad de Hallazgos y Código Automático `H-nn`)**:
    - Todo hallazgo exige `condicion`, `criterio`, `causa`, `efecto_riesgo` y `severidad` (`'ALTA' | 'MEDIA' | 'BAJA'`). Si falta cualquiera (por ejemplo, `causa` vacía), rechazar con `400` (`CP-07`).
-   - El código `H-01`, `H-02`, `H-03`... se calcula automáticamente en el backend contando cuántos hallazgos tiene esa auditoría hasta el momento.
+   - El código `H-01`, `H-02`, `H-03`... se calcula automáticamente en el backend como el **mayor número existente + 1** dentro de la auditoría (no con `COUNT(*)`, porque al eliminar un hallazgo intermedio el conteo repetiría un código ya usado). El código debe ser **único por auditoría** (regla de integridad del modelo de datos del documento de ejemplo); como `hallazgo` no tiene `id_auditoria`, la unicidad se valida en el backend dentro de la misma transacción. Ejemplo:
+     ```sql
+     SELECT COALESCE(MAX(SPLIT_PART(h.codigo, '-', 2)::INT), 0) + 1 AS siguiente
+     FROM hallazgo h JOIN evaluacion_control e ON e.id_evaluacion = h.id_evaluacion
+     WHERE e.id_auditoria = $1;
+     ```
+     La misma regla aplica al consecutivo `EV-nn` de evidencias.
 6. **RN06 / CP-08 (Condiciones de Cierre de Auditoría)**:
    - Para cambiar el estado de una auditoría a `'CERRADA'`, el backend verifica:
      1. Todos los controles seleccionados están evaluados (ninguno en `'PENDIENTE'`).
@@ -459,7 +470,7 @@ Todas las respuestas siguen el sobre JSON estándar:
       "alcance": "Infraestructura cloud, redes y aplicaciones centrales.",
       "fecha_inicio": "2026-11-10",
       "fecha_fin": "2026-11-24",
-      "referentes": "ISO 19011:2018; ISO/IEC 27001:2022; ISO/IEC 27002:2022",
+      "referentes": "ISO 19011:2026; ISO/IEC 27001:2022; ISO/IEC 27002:2022",
       "id_auditor": 1
     }
     ```
@@ -484,7 +495,7 @@ Todas las respuestas siguen el sobre JSON estándar:
           "codigo_iso": "5.1",
           "categoria": "ORGANIZACIONAL",
           "nombre": "Políticas para la seguridad de la información",
-          "criterio": "Garantizar la idoneidad, la adecuación y la eficacia continuas...",
+          "criterio": "La política de seguridad de la información y las políticas específicas por tema deben definirse, ser aprobadas por la dirección...",
           "pregunta_orientadora": "¿Existe una política aprobada por la dirección, comunicada y revisada en intervalos planificados?",
           "ejemplo_aplicacion": "Desarrollo de una política de seguridad de la información",
           "evidencia_sugerida": "Documento de política aprobado y comunicado"
@@ -511,7 +522,7 @@ Todas las respuestas siguen el sobre JSON estándar:
           "codigo_iso": "5.1",
           "categoria": "ORGANIZACIONAL",
           "nombre": "Políticas para la seguridad de la información",
-          "criterio": "Garantizar la idoneidad...",
+          "criterio": "La política de seguridad de la información y las políticas específicas por tema deben definirse...",
           "pregunta_orientadora": "¿Existe una política aprobada por la dirección, comunicada y revisada en intervalos planificados?",
           "ejemplo_aplicacion": "Desarrollo de una política de seguridad de la información",
           "evidencia_sugerida": "Documento de política aprobado y comunicado",
@@ -625,9 +636,9 @@ Todas las respuestas siguen el sobre JSON estándar:
 
 ---
 
-## 7. Despliegue del Backend en Render (`backend/render.yaml`)
+## 7. Despliegue del Backend en Render (`render.yaml`)
 
-Incluir un archivo `backend/render.yaml` y soporte de `PORT` dinámico (`process.env.PORT || 4000`) para despliegue inmediato en Render:
+Incluir un archivo `render.yaml` en la raíz del repositorio y soporte de `PORT` dinámico (`process.env.PORT || 4000`) para despliegue inmediato en Render:
 
 ```yaml
 services:
@@ -649,3 +660,99 @@ services:
 
 ### Auto-inicialización Segura de Base de Datos al Arrancar (`src/server.js`)
 Al iniciar el servidor (`npm start`), el backend debe verificar si la tabla `control` existe y tiene los 93 registros (`SELECT COUNT(*) FROM control`). Si la base de datos está vacía o las tablas no existen, el servidor debe ejecutar automáticamente el script de inicialización (`SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` + hasheo bcrypt de las contraseñas de los usuarios semilla) para garantizar que al desplegar en Render o AWS la base de datos quede 100% lista y poblada en el primer arranque sin intervención manual.
+
+---
+
+## 8. Complementos tomados de los documentos académicos (`/documents`)
+
+Esta sección incorpora lo que exigen `Proyecto_Academico_AuditSys_Mini.docx` (documento orientador) y `AuditSys_Mini_Proyecto_Ejemplo.docx` (ejemplo aplicado y rúbrica) y que no estaba explícito en las secciones anteriores.
+
+### 8.1. Alcance del MVP frente al catálogo de 93 controles
+- El documento orientador declara **fuera del alcance obligatorio** implementar los 93 controles del Anexo A. Lo obligatorio es que cada auditoría **seleccione y evalúe entre 10 y 15 controles** (`RF02`, `RN02`).
+- Cargar los 93 controles en la tabla `control` es una **extensión** que facilita la selección; no reemplaza la regla de 10 a 15. En la sustentación conviene aclararlo para que no se interprete como evaluación del Anexo A completo.
+- Regla de alcance del documento: *"Se evaluará la calidad y trazabilidad del flujo implementado, no la cantidad de módulos adicionales."*
+
+### 8.2. Interpretación de los estados de evaluación (sección 10.1 del documento orientador)
+
+| Estado (`evaluacion_control.estado`) | Interpretación auditora | Regla del sistema |
+| :--- | :--- | :--- |
+| `IMPLEMENTADO` | Existe evidencia suficiente de que el control está implementado y opera según el criterio definido. | Exige ≥ 1 evidencia para pasar a `EN_REVISION` (`RN04`). |
+| `PARCIAL` | El control existe, pero presenta brechas de cobertura, formalización u operación. | Exige ≥ 1 evidencia (`RN04`); suma 0,5 en el índice ponderado. |
+| `NO_IMPLEMENTADO` | No se evidencia implementación del control frente al criterio evaluado. | Candidato natural a hallazgo (`RF05`). |
+| `NO_APLICABLE` | El control no aplica al alcance o contexto. | Exige `justificacion_na` (`RN03`) y se excluye del denominador (`RF07`). |
+| `PENDIENTE` | Estado técnico interno: control seleccionado aún no evaluado. | Impide el cierre (`RN06`). No es uno de los 4 estados académicos. |
+
+El indicador es **descriptivo**: *"El resultado no equivale a una certificación ni sustituye el juicio profesional del auditor."* (sección 10.2). Los controles parciales que no generan hallazgo (en Empresa ABC: 5.18, 6.3, 8.5 y 8.23) quedan como **oportunidades de mejora** dentro de su observación.
+
+### 8.3. Matriz de trazabilidad de requisitos
+
+| Requisito | Criterio mínimo de aceptación (documento orientador) | Endpoint(s) | Pantalla | Casos de prueba |
+| :--- | :--- | :--- | :--- | :--- |
+| `RF01` Registrar auditoría | Organización, objetivo, alcance, fecha y responsable. | `POST/PUT /api/auditorias` | `auditoria.html` | CP-01, CP-02 |
+| `RF02` Gestionar controles | Consultar entre 10 y 15 controles seleccionados con su criterio. | `GET /api/controles`, `PUT /api/auditorias/:id/seleccion-controles` | `catalogo.html` | CP-03, CP-13 |
+| `RF03` Evaluar controles | Asignar uno de los 4 estados y guardar observaciones. | `PUT /api/evaluaciones/:id` | `evaluacion.html` | CP-04, CP-05 |
+| `RF04` Registrar evidencias | Descripción, fuente, fecha y archivo o referencia. | `POST /api/evaluaciones/:id/evidencias` | `evaluacion.html` | CP-06 |
+| `RF05` Documentar hallazgos | Condición, criterio, causa, efecto/riesgo y severidad. | `POST /api/evaluaciones/:id/hallazgos` | `hallazgos.html` | CP-07 |
+| `RF06` Asociar recomendaciones | Vincular la recomendación con su hallazgo. | `POST /api/hallazgos/:id/recomendaciones` | `hallazgos.html` | CP-08 |
+| `RF07` Calcular resultados | Cantidades y porcentajes con fórmula explícita; N/A fuera del denominador. | `GET /api/auditorias/:id/indicadores` | `informe.html`, `dashboard.html` | CP-09 |
+| `RF08` Generar informe | Datos, alcance, resultados, hallazgos y recomendaciones desde la BD. | `GET/POST /api/auditorias/:id/informes` | `informe.html` | CP-10 |
+| `RF09` Dashboard | Cuadro integral de indicadores de gestión de auditorías. | `GET /api/dashboard` | `dashboard.html` | CP-11 |
+| `RNF01` Usabilidad y adaptabilidad | Flujo completo en escritorio y móvil. | — | Todas (360 px) | CP-12 |
+| `RNF02` Persistencia | Los datos permanecen tras cerrar y reabrir. | PostgreSQL | Todas | CP-01, CP-12 |
+| `RNF03` Validación | Obligatorios y formatos validados antes de guardar (cliente y servidor). | Todas las mutaciones (`400` + `field`) | Todas | CP-02, CP-04, CP-05, CP-07 |
+| `RNF04` Seguridad básica | Acceso restringido a funciones administrativas. | JWT + `requireRole('admin')` + `auditLock` | `login.html`, `catalogo.html` | CP-13 |
+| `RNF05` Trazabilidad | Evidencia y hallazgo relacionados con control y auditoría. | `GET /api/auditorias/:id/trazabilidad` | `hallazgos.html` | CP-10 |
+| `RNF06` Mantenibilidad | Código modular con instrucciones de ejecución. | Estructura de la sección 2 + `README.md` | — | — |
+
+### 8.4. Plan de pruebas oficial (`CP-01` a `CP-13`)
+
+| ID | Caso | Datos de entrada | Resultado esperado |
+| :--- | :--- | :--- | :--- |
+| CP-01 | Crear auditoría válida | Datos completos de Empresa ABC. | Aparece en la lista en estado `BORRADOR`. |
+| CP-02 | Crear auditoría incompleta | Fecha de cierre vacía. | Mensaje junto al campo; no se guarda. |
+| CP-03 | Selección fuera de rango | 9 controles y luego 16 controles. | Se bloquea el paso a ejecución con mensaje del rango 10 a 15. |
+| CP-04 | Evaluar sin observación | Estado `PARCIAL` y observación vacía. | Se rechaza el guardado. |
+| CP-05 | No aplicable sin justificación | Control 8.31 sin justificación. | Se rechaza; con justificación se guarda y se excluye del denominador. |
+| CP-06 | Implementado sin evidencia | Control 5.1 sin evidencia. | Alerta y bloqueo del paso a revisión. |
+| CP-07 | Hallazgo incompleto | Hallazgo sin causa. | Se rechaza; completo genera el código `H-nn`. |
+| CP-08 | Cierre sin recomendación | Hallazgo sin recomendación o menos de tres hallazgos. | Se impide el cierre de la auditoría. |
+| CP-09 | Cálculo de indicadores | 4 implementados, 5 parciales, 3 no implementados y 1 no aplicable. | 33,3 % de cumplimiento base y 54,2 % de índice ponderado. |
+| CP-10 | Generación de informe | Auditoría completa. | El informe coincide con la BD y marca las evidencias simuladas. |
+| CP-11 | Dashboard | Datos de Empresa ABC. | Las tarjetas coinciden con el informe. |
+| CP-12 | Persistencia y móvil | Cerrar y reabrir; ancho de 360 px. | Los datos permanecen y el flujo es operable. |
+| CP-13 | Acceso por rol y cierre | Auditor intenta editar el catálogo; edición de una auditoría cerrada. | Acceso denegado en ambos casos (`RNF04`). |
+
+Cada caso debe ejecutarse con un resultado positivo y uno negativo cuando aplique, y registrarse con su evidencia en el **Informe de pruebas** (entregable 5).
+
+### 8.5. Definición de terminado y lista de verificación del día 5
+**Definición de terminado** (una funcionalidad está terminada cuando):
+1. Cumple el criterio de aceptación de su requisito (tabla 8.3).
+2. Valida los datos en cliente **y** en servidor y muestra mensajes claros.
+3. Persiste la información y conserva la trazabilidad.
+4. Tiene al menos un caso de prueba positivo y uno negativo ejecutados.
+5. Está integrada en la rama `main` y puede demostrarse con los datos de Empresa ABC.
+
+**Checklist del día 5**: auditoría creada y consultable tras recargar; catálogo que muestra y permite seleccionar controles; BD con llaves foráneas y restricciones `CHECK`; autenticación básica documentada; `README.md` con instrucciones de ejecución; prototipos de las pantallas 1 a 4 aprobados; plan de datos de ejemplo de Empresa ABC.
+
+### 8.6. Entregables y rúbrica (resumen)
+
+| N.º | Entregable | Contenido mínimo |
+| :--- | :--- | :--- |
+| 1 | Modelado de la solución | Casos de uso, modelo entidad-relación y arquitectura o componentes. |
+| 2 | Prototipo de interfaces | Vistas principales del flujo de auditoría. |
+| 3 | Código fuente | Repositorio organizado con instrucciones de instalación y ejecución. |
+| 4 | Aplicación funcional | MVP con persistencia y flujo principal operativo. |
+| 5 | Informe de pruebas | Casos CP-01 a CP-13 ejecutados, resultados y defectos. |
+| 6 | Informe de auditoría | Documento **generado por la aplicación** (no elaborado a mano). |
+| 7 | Sustentación | Demostración funcional y explicación de decisiones técnicas. |
+
+Ponderación: Fundamentación auditora y normativa 15 % · Requisitos y modelado 15 % · Arquitectura y datos 15 % · Funcionalidad 30 % · Pruebas y calidad 10 % · Sustentación 15 %. **Señales de alerta** de la rúbrica que el sistema debe evitar: porcentaje presentado como certificación, datos solo en memoria o sin integridad, informe elaborado manualmente y ausencia de pruebas negativas.
+
+### 8.7. Extensión opcional alineada con ISO 19011:2026
+ISO 19011:2026 trata los métodos de auditoría presencial, remoto e híbrido como opciones equivalentes. Si el equipo quiere reforzar la fundamentación normativa, puede añadir a `evidencia` una columna opcional que no rompe la semilla:
+```sql
+ALTER TABLE evidencia
+  ADD COLUMN metodo_obtencion VARCHAR(10) NOT NULL DEFAULT 'PRESENCIAL'
+  CHECK (metodo_obtencion IN ('PRESENCIAL', 'REMOTO', 'HIBRIDO'));
+```
+y mostrarla en el anexo de evidencias del informe (sección 7). Es opcional y no forma parte de los criterios de aceptación del MVP.
