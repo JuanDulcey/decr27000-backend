@@ -86,9 +86,20 @@ decr27000-backend/
 
 ```env
 PORT=4000
-DATABASE_URL=postgresql://usuario:password@host:5432/auditsys_db?sslmode=require
+NODE_ENV=development
+DATABASE_URL=postgresql://postgres.agnkxidlirvkwwfavsvt:[PASSWORD]@aws-0-us-east-2.pooler.supabase.com:5432/postgres
+DB_HOST=aws-0-us-east-2.pooler.supabase.com
+DB_PORT=5432
+DB_NAME=postgres
+DB_USER=postgres.agnkxidlirvkwwfavsvt
+DB_PASSWORD=[PASSWORD]
+DB_SSL=true
+SUPABASE_URL=https://agnkxidlirvkwwfavsvt.supabase.co
 JWT_SECRET=decr27000_iso27002_secret_key_2026_segura
+JWT_EXPIRES_IN=7d
 CORS_ORIGIN=*
+FRONTEND_URL=https://decr27000-frontend.vercel.app
+BACKEND_URL=https://decr27000-backend.onrender.com
 ```
 
 > **Configuración de CORS en `src/app.js`**:

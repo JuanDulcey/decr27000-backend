@@ -1,8 +1,27 @@
+# Dependencias
 node_modules/
+.pnpm-store/
+
+# Variables de entorno (NUNCA subir credenciales reales)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Archivos de compilación y cobertura
 dist/
+build/
 coverage/
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# IDEs y Sistema Operativo
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
