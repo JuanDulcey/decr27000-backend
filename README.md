@@ -30,7 +30,7 @@ pnpm start:dev            # http://localhost:4000/api  (modo watch)
 | `pnpm test` | Pruebas unitarias (`src/**/*.spec.ts`). |
 | `pnpm test:e2e` | Pruebas e2e contra PostgreSQL en Docker (ver abajo). |
 | `pnpm db:security` | Activa RLS en Supabase, revoca privilegios de `anon`/`authenticated` y hashea contraseñas en texto plano. No borra datos; es idempotente. |
-| `pnpm db:seed` | **Borra todo** y carga `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql`. Contra una BD remota exige `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC`. |
+| `pnpm db:seed` | **Borra todo** y carga `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` con las contraseñas hasheadas. Contra una BD remota exige `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC`. Con `SEED_SECURITY=false` no aplica RLS (así se restauró Supabase el 13-nov, por decisión del equipo). |
 
 ## Pruebas e2e (nunca contra Supabase)
 ```bash
@@ -58,6 +58,29 @@ src/
 sql/security.sql            # RLS + REVOKE para Supabase
 test/                       # pruebas e2e (Vitest + supertest)
 ```
+
+## Certificado de Supabase (`DB_SSL_CA`) — paso a paso
+La conexión a Supabase siempre va cifrada (TLS). Con la CA de Supabase configurada, además se **verifica** que el servidor sea realmente Supabase, lo que evita ataques de intermediario. Sin ella el backend funciona igual, pero deja este aviso en el log: `DB_SSL_CA no está configurada…`.
+
+1. **Descargar la CA**: en el panel de Supabase, abra el proyecto → **Project Settings → Database** (en algunas versiones del panel: **Database → Settings**) → sección **SSL Configuration** → **Download certificate**. Se descarga un archivo `.crt` (por ejemplo `prod-ca-2021.crt`). Es un certificado **público**: no es un secreto, pero tampoco hace falta subirlo al repo.
+2. **Convertirlo a una sola línea** (desde la carpeta donde quedó el archivo):
+   ```bash
+   awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' prod-ca-2021.crt
+   ```
+   El resultado empieza por `-----BEGIN CERTIFICATE-----\n` y termina en `-----END CERTIFICATE-----\n`.
+3. **Ponerlo en el `.env` local** del backend, entre comillas dobles:
+   ```env
+   DB_SSL_CA="-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----\n"
+   ```
+4. **Probar en local**:
+   ```bash
+   pnpm build && pnpm start
+   curl "http://localhost:4000/api/health?db=1"   # debe responder "db":"UP"
+   ```
+   - El aviso `DB_SSL_CA no está configurada` ya no debe aparecer en el log.
+   - Si responde `"db":"DOWN"` y el log muestra `self-signed certificate in certificate chain` o `Hostname/IP does not match`, el certificado no corresponde al pooler: borre `DB_SSL_CA` para volver al modo anterior y revise que descargó el certificado del mismo proyecto.
+5. **Ponerlo en Render**: servicio `decr27000-backend` → **Environment** → **Add Environment Variable** → clave `DB_SSL_CA` y, como valor, el contenido del `.crt` (Render acepta valores de varias líneas, así que puede pegar el archivo tal cual o la versión de una línea del paso 2) → **Save changes**. Render redespliega solo.
+6. **Verificar en producción**: `https://decr27000-backend.onrender.com/api/health?db=1` debe responder `"db":"UP"`, y el log de Render no debe mostrar el aviso.
 
 ## Despliegue en Render (plan gratuito)
 Valores en [`render.yaml`](render.yaml). Si el servicio se creó desde el panel, configúrelos en **Settings → Build & Deploy**:

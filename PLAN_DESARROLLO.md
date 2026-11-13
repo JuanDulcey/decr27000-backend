@@ -19,7 +19,7 @@
 | Especificaciones | Completas: modelo de datos, reglas RN01–RN07, contrato de API, 7 pantallas, CP-01 a CP-13. | Este plan las ordena en el tiempo y añade lo necesario para producción. |
 
 ### Riesgos del entorno desplegado (se atienden en el plan)
-1. **Supabase expone el esquema `public` por su API REST (PostgREST).** Si RLS está desactivado, cualquiera con la *anon key* del proyecto puede leer y escribir las tablas sin pasar por el backend. → Tarea `B1.4` (obligatoria).
+1. **Supabase expone el esquema `public` por su API REST (PostgREST).** Si RLS está desactivado, cualquiera con la *anon key* del proyecto puede leer y escribir las tablas sin pasar por el backend. → Tarea `B1.4`; **el equipo decidió no aplicarla (13-nov)** y acepta el riesgo. Se puede aplicar en cualquier momento con `pnpm db:security`.
 2. **Render (plan gratuito) suspende el servicio tras ~15 min sin tráfico.** La primera petición tarda entre 30 y 60 s. → El frontend muestra un aviso de "despertando servidor" (`F1.3`) y, antes de la sustentación, se hace un ping previo.
 3. **Supabase (plan gratuito) pausa el proyecto tras 7 días sin actividad.** → Revisar el panel la semana de la sustentación y mantener tráfico periódico.
 4. **`.env.example` público con un `JWT_SECRET` de ejemplo.** → En Render, `JWT_SECRET` debe ser un valor propio (ya lo genera `render.yaml`) y nunca el del ejemplo (`B1.2`).
@@ -221,7 +221,7 @@ flowchart LR
 **Objetivo**: dejar la base técnica completa y segura, más el primer tramo del flujo (paso 1 → paso 3 del stepper), desplegado y demostrable.
 
 #### Backend
-> **Avance (13-nov-2026, rama `feat/nest-backend-base`)**: B1.0, B1.1, B1.2, B1.5 y B1.6 terminadas; B1.3, B1.4 y B1.10 avanzadas. 30 pruebas en verde (14 unitarias + 16 e2e). Pendiente con aprobación: ejecutar `pnpm db:security` en Supabase (las contraseñas están en texto plano y el login real falla hasta hacerlo).
+> **Avance (13-nov-2026, rama `feat/nest-backend-base`)**: B1.0, B1.1, B1.2, B1.3, B1.5 y B1.6 terminadas; B1.10 avanzada; B1.4 descartada por decisión del equipo. 30 pruebas del backend en verde (14 unitarias + 16 e2e) y 10 E2E del frontend en verde contra el backend local. Supabase fue restaurada con la semilla corregida (respaldo previo con `pg_dump`) y el login real funciona.
 
 - [x] **B1.0 Actualizar documentación al nuevo stack**: `BACKEND_SPEC.md` (secciones 1, 2, 2.1, 2.2, 6.1 health y 7), `CLAUDE.md` y este plan pasan a NestJS 12 + NodeAdapter. El contrato de API (sección 6) se mantiene.
 - [x] **B1.1 Proyecto base NestJS 12 + NodeAdapter**
@@ -234,15 +234,15 @@ flowchart LR
   - Validación al arrancar de `DATABASE_URL`, `JWT_SECRET` (32+), `JWT_EXPIRES_IN` (8h), `DB_POOL_MAX`, `DB_SSL_CA`, `FRONTEND_URL`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `ALLOW_SEED_RESET`.
   - En producción se rechaza el `JWT_SECRET` público de `.env.example` y cualquier marcador `[...]`.
   - `.env.example` actualizado (solo marcadores).
-- [ ] **B1.3 Base de datos y semilla** (`database/`)
+- [x] **B1.3 Base de datos y semilla** (`database/`)
   - [x] `DatabaseService` (pool `max 4`, keep-alive, timeouts, `statement_timeout 10s`, `withTransaction`) y TLS verificable con `DB_SSL_CA`.
   - [x] `InitDbService`: al arrancar solo verifica el catálogo; si no hay tablas o están vacías, carga la semilla. Nunca reinicia una BD con datos.
   - [x] `pnpm db:seed` (borra todo; contra BD remota exige `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC`).
-  - [ ] **Verificación en Supabase**: ya se confirmó que tiene 93 controles y que **las contraseñas están en texto plano**. Falta revisar si tiene la semilla corregida (referentes ISO 19011:2026, nombre del control 7.7) y decidir si se vuelve a sembrar.
-- [ ] **B1.4 Seguridad de Supabase** (`sql/security.sql`, `pnpm db:security`)
+  - [x] **Supabase restaurada (13-nov)**: tenía las contraseñas en texto plano. Con aprobación del equipo se respaldó con `pg_dump` y se recargó la semilla corregida con `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC SEED_SECURITY=false pnpm db:seed` (93 controles, ISO 19011:2026, 2 contraseñas hasheadas).
+- [ ] ~~**B1.4 Seguridad de Supabase**~~ — **descartada por el equipo (13-nov)**: la API pública de Supabase casi no se usará. El script queda disponible (`pnpm db:security`) por si se decide aplicarlo; la semilla acepta `SEED_SECURITY=false`.
   - [x] Script idempotente: RLS en las 8 tablas, `REVOKE` de `anon` y `authenticated` (y sus privilegios por defecto), hash de contraseñas en texto plano. Probado en Docker.
-  - [ ] Ejecutarlo en Supabase (requiere aprobación del equipo) y verificar que el panel ya no muestre la alerta "RLS disabled".
-  - [ ] Descargar la CA de Supabase y definir `DB_SSL_CA` en el `.env` local y en Render.
+  - [ ] ~~Ejecutarlo en Supabase~~ (no se ejecuta por decisión del equipo; el panel seguirá mostrando la alerta "RLS disabled").
+  - [ ] Descargar la CA de Supabase y definir `DB_SSL_CA` en el `.env` local y en Render (paso a paso en el README del backend).
 - [x] **B1.5 Infraestructura HTTP** (`common/`)
   - `helmet` (sin CSP: la API solo devuelve JSON), CORS con lista blanca, límite de cuerpo de 100 KB (por defecto en `NodeAdapter`).
   - `AllExceptionsFilter` y `ResponseInterceptor` con el contrato; las rutas inexistentes responden `404 "Ruta no encontrada"` (compatibilidad con el motor local del frontend).
@@ -485,8 +485,8 @@ flowchart LR
 
 | Riesgo | Prob. | Impacto | Mitigación |
 | :--- | :---: | :---: | :--- |
-| Tablas de Supabase accesibles por PostgREST sin RLS | Alta | Alto | B1.4 en el día 1–2 del I1. |
-| BD de producción con la semilla anterior o contraseñas en texto plano | Media | Medio | Verificación de B1.3 y nueva siembra controlada. |
+| Tablas de Supabase accesibles por PostgREST sin RLS | Media | Alto | Riesgo **aceptado por el equipo** (13-nov): no se aplica RLS. No publicar la *anon key*; si se decide mitigar, basta con `pnpm db:security` (idempotente, no borra datos). |
+| BD de producción con la semilla anterior o contraseñas en texto plano | — | — | **Resuelto (13-nov)**: semilla corregida recargada y contraseñas hasheadas. |
 | Arranque en frío de Render durante la demo | Alta | Medio | Aviso en el login + ping previo + tiempo de espera de 70 s en `api.js`. |
 | Supabase pausado por inactividad | Media | Alto | Revisar el panel 48 h antes; tráfico periódico durante la semana. |
 | Alcance que crece (Storage, logs, etc.) frena el MVP | Media | Alto | Todo lo opcional queda al final del I3; la regla del curso dice que "las funcionalidades adicionales no compensan fallas del MVP". |
