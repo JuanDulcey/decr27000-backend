@@ -1,0 +1,34 @@
+# Render Blueprint — decr27000-backend (NestJS 12 + NodeAdapter)
+# Optimizado para el plan gratuito (512 MB RAM, 0.1 CPU). Ver PLAN_DESARROLLO.md §2.6.
+# Si el servicio se creó desde el panel (sin Blueprint), copie estos valores en
+# Settings → Build & Deploy. La región no se puede cambiar después de crear el servicio.
+services:
+  - type: web
+    name: decr27000-backend
+    runtime: node
+    plan: free
+    region: ohio # misma región que Supabase (us-east-2): menor latencia por consulta
+    # NODE_ENV=development solo en la instalación: con production, pnpm omite las devDependencies
+    # (nest CLI, typescript) y el build falla. Al final se eliminan con prune.
+    buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod
+    startCommand: node --max-old-space-size=384 dist/main.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL_CA
+        sync: false
+      - key: DB_POOL_MAX
+        value: "4"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: FRONTEND_URL
+        value: https://decr27000-frontend.vercel.app
+      - key: SWAGGER_ENABLED
+        value: "true"
+      - key: ALLOW_SEED_RESET
+        value: "false"
