@@ -21,6 +21,7 @@ export default defineConfig({
       JWT_EXPIRES_IN: '1h',
       FRONTEND_URL: 'https://decr27000-frontend.vercel.app',
       SWAGGER_ENABLED: 'false',
+      ALLOW_SEED_RESET: 'true',
     },
   },
 });

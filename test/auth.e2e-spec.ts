@@ -101,7 +101,7 @@ describe('Plataforma: health, errores, autenticación y usuarios (B1.5, B1.6)', 
       expect(res.body.field).toBe('rol');
     });
 
-    it('más de 10 intentos en 15 minutos → 429', async () => {
+    it('10 intentos fallidos en 15 minutos bloquean la IP → 429 (incluso con la clave correcta)', async () => {
       for (let i = 0; i < LoginRateLimitGuard.MAX_ATTEMPTS; i++) {
         await request(http).post('/api/auth/login').send({ correo: AUDITOR, password: 'mala' }).expect(401);
       }
@@ -109,7 +109,18 @@ describe('Plataforma: health, errores, autenticación y usuarios (B1.5, B1.6)', 
         .post('/api/auth/login')
         .send({ correo: AUDITOR, password: PASSWORD })
         .expect(429);
-      expect(res.body.error).toMatch(/Demasiados intentos/);
+      expect(res.body.error).toMatch(/Demasiados intentos fallidos/);
+    });
+
+    it('los inicios de sesión correctos no cuentan y limpian los fallos', async () => {
+      for (let i = 0; i < 15; i++) {
+        await request(http).post('/api/auth/login').send({ correo: AUDITOR, password: PASSWORD }).expect(200);
+      }
+      for (let i = 0; i < LoginRateLimitGuard.MAX_ATTEMPTS - 1; i++) {
+        await request(http).post('/api/auth/login').send({ correo: AUDITOR, password: 'mala' }).expect(401);
+      }
+      await request(http).post('/api/auth/login').send({ correo: AUDITOR, password: PASSWORD }).expect(200);
+      await request(http).post('/api/auth/login').send({ correo: AUDITOR, password: 'mala' }).expect(401);
     });
   });
 
