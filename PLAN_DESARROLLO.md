@@ -3,7 +3,7 @@
 > Plan único para **backend** (`decr27000-backend`) y **frontend** (`decr27000-frontend`), dividido en **3 incrementos** entregables y desplegados. Al final de cada uno se recoge feedback.
 > Especificaciones de referencia: `BACKEND_SPEC.md` y `FRONTEND_SPEC.md` (la fuente de verdad es la copia dentro de cada repo). Reglas de trabajo: `CLAUDE.md`.
 > Fecha de corte del diagnóstico: 11 de noviembre de 2026 (frontend y entorno revisados de nuevo el 13 de noviembre).
-> **Stack decidido**: backend NestJS + Fastify + `pg` (pnpm) · frontend HTML + Tailwind CDN + CSS, sin build · 4 integrantes. Las decisiones están en la sección 6 y el reparto de trabajo en la sección 2.5.
+> **Stack decidido**: backend NestJS 12 + NodeAdapter + `pg` (pnpm) · frontend HTML + Tailwind CDN + CSS, sin build · 4 integrantes. Las decisiones están en la sección 6 y el reparto de trabajo en la sección 2.5.
 > Este archivo se mantiene igual en los dos repositorios (`PLAN_DESARROLLO.md` en la raíz de cada uno).
 
 ---
@@ -36,7 +36,7 @@ Además de cumplir los criterios de aceptación del curso (sección 17 del docum
 | Adecuación funcional | RF01–RF09 completos; CP-01 a CP-13 pasan en automático y en la demo. |
 | Fiabilidad | Operaciones de varias tablas en transacción; ningún `500` sin controlar; el health check reporta el estado de la BD. |
 | Seguridad | JWT, roles, bloqueo de auditorías cerradas, contraseñas con bcrypt, RLS en Supabase, CORS restringido, límite de intentos de login, cabeceras seguras, salida de datos escapada (sin XSS). |
-| Mantenibilidad | Módulos de NestJS (`controller → service → DatabaseService`), TypeScript estricto, DTOs validados, ESLint + Prettier, Swagger, README con instrucciones, commits convencionales. |
+| Mantenibilidad | Módulos de NestJS (`controller → service → DatabaseService`), TypeScript estricto, DTOs validados, oxlint + Prettier, Swagger, README con instrucciones, commits convencionales. |
 | Usabilidad | Flujo guiado de 6 pasos; validación en línea que conserva lo digitado; estado con texto, color e ícono. |
 | Flexibilidad (adaptabilidad) | Operable a 360 px; botones de al menos 44 px. |
 | Eficiencia de desempeño | Respuesta de la API < 500 ms con el servicio activo; dashboard en una sola consulta agregada; pool de conexiones acotado. |
@@ -48,54 +48,43 @@ Además de cumplir los criterios de aceptación del curso (sección 17 del docum
 
 > Cada decisión lleva la opción recomendada. Las que conviene confirmar con el equipo están en la **sección 6 (Preguntas)**. Si no hay respuesta, se aplica la recomendación.
 
-### 2.1. Backend — NestJS + Fastify (decisión del equipo)
-- **Framework**: **NestJS 11 con TypeScript y `@nestjs/platform-fastify`**. Fastify es el adaptador más rápido de Nest: rinde aproximadamente el doble de peticiones por segundo que Express y trae el logger `pino` integrado. Esto **reemplaza a Express** de la especificación; el contrato de API (rutas, cuerpos, sobre `{ ok, data | error, field }`) no cambia, así que el frontend no se ve afectado.
-- **Proyecto**: se crea con `pnpm dlx @nestjs/cli new decr27000-backend --package-manager pnpm --strict` y se reemplaza el adaptador Express por Fastify.
-- **Runtime**: Node.js 22 LTS o superior (fijar en `engines` y en Render).
-- **Acceso a datos**: **`pg` con SQL parametrizado, sin ORM**, mediante un `DatabaseModule` global que expone el `Pool` y un helper `withTransaction()`. Es la opción más rápida en ejecución, la semilla SQL sigue siendo la única fuente del esquema, y se mantiene lo que pide la especificación: que se vean las llaves foráneas y los `CHECK` (P1).
-- **Validación**: **`class-validator` + `class-transformer` con el `ValidationPipe` global** (`whitelist`, `forbidNonWhitelisted`, `transform`). Es lo nativo de Nest. Un `exceptionFactory` convierte el primer error al formato `{ ok:false, error, field }` (P3).
-- **Respuestas y errores**: un `ResponseInterceptor` envuelve las respuestas en `{ ok:true, data, message? }` y un `AllExceptionsFilter` traduce `HttpException` y errores de PostgreSQL (`23505`/`23503` → 409, `23514` → 400) al sobre de error, sin exponer la traza en producción.
-- **Seguridad**: `@nestjs/jwt` + `JwtAuthGuard` global (con un decorador `@Public()` para login y health), `RolesGuard` + `@Roles('admin')`, `AuditLockGuard` para auditorías `CERRADA`, `bcryptjs`, `@fastify/helmet`, `@nestjs/throttler` (solo en login) y CORS con lista blanca (P10).
-- **Configuración**: `@nestjs/config` con un esquema de validación de variables al arrancar.
-- **Documentación de la API**: `@nestjs/swagger` en `/api/docs`. Es la documentación viva del contrato, sirve para probar endpoints en la sustentación y se apaga en producción con una variable si se quiere.
-- **Pruebas**: **Jest + supertest** (lo que trae el CLI de Nest, así que no hay que configurar nada): unitarias en los servicios y e2e (`test/*.e2e-spec.ts`) contra PostgreSQL 16 en Docker (P9).
-- **Calidad**: ESLint + Prettier (vienen con el CLI); `pnpm lint`, `pnpm test`, `pnpm test:e2e`.
-- **Build y despliegue en Render (plan gratuito)**: `buildCommand: pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod` · `startCommand: node --max-old-space-size=384 dist/main.js` (se arranca con `node` directo, sin pasar por `pnpm`, para ahorrar memoria y tiempo de arranque). Fastify debe escuchar en `0.0.0.0` y en `process.env.PORT`. Todas las optimizaciones están en la sección 2.6.
+### 2.1. Backend — NestJS 12 + NodeAdapter (decisión del equipo: "el más rápido")
+- **Framework**: **NestJS 12 con TypeScript (ESM) y `NodeAdapter` (`@nestjs/platform-node`)**. Según la documentación oficial de Nest 12, `NodeAdapter` (sobre `node:http`) es el adaptador más rápido: ~5 % más peticiones por segundo que Fastify y ~50 % más que Express. Es el recomendado desde la 12.3 y será el default en la 13. Además pesa menos en memoria (sin Express ni Fastify), lo que importa en Render gratuito. Reemplaza a Express de la especificación; el contrato de API (rutas, cuerpos, sobre `{ ok, data | error, field }`) no cambia, así que el frontend no se ve afectado.
+  - *Historial*: el plan decía Fastify; al generar el proyecto (13-nov) el CLI oficial ya era Nest 12, y la documentación confirmó que `NodeAdapter` es más rápido. Se eligió por la regla del equipo de usar "el que sea más rápido".
+- **Proyecto**: base generada con `pnpm dlx @nestjs/cli new --package-manager pnpm --strict` (Nest 12: ESM, Vitest, oxlint).
+- **Runtime**: Node.js 22 o superior (`engines`).
+- **Acceso a datos**: **`pg` con SQL parametrizado, sin ORM**, mediante un `DatabaseModule` global que expone `query()`, `one()`, `withTransaction()` y `ping()`. Es la opción más rápida en ejecución, la semilla SQL sigue siendo la única fuente del esquema, y se mantiene lo que pide la especificación: que se vean las llaves foráneas y los `CHECK` (P1).
+- **Validación**: **`class-validator` + `class-transformer` con el `ValidationPipe` global** (`whitelist`, `forbidNonWhitelisted`, `transform`, `stopAtFirstError`). Un `exceptionFactory` convierte el primer error al formato `{ ok:false, error, field }` (P3).
+- **Respuestas y errores**: un `ResponseInterceptor` envuelve las respuestas en `{ ok:true, data, message? }` y un `AllExceptionsFilter` traduce `HttpException` y errores de PostgreSQL (`23505`/`23503` → 409, `23514`/`23502`/`22P02` → 400) al sobre de error, sin exponer la traza.
+- **Seguridad**: `@nestjs/jwt` + `JwtAuthGuard` global (`@Public()` para login y health), `RolesGuard` + `@Roles('admin')`, `AuditLockGuard` para auditorías `CERRADA` (I1/I2), `bcryptjs`, `helmet`, `LoginRateLimitGuard` propio en memoria (10 intentos por IP cada 15 min; sin `@nestjs/throttler`) y CORS con lista blanca (P10). TLS a Supabase verificado si se configura `DB_SSL_CA`.
+- **Configuración**: `@nestjs/config` con `validateEnv()` al arrancar; en pruebas (`NODE_ENV=test`) se ignora el `.env`.
+- **Documentación de la API**: `@nestjs/swagger` en `/api/docs`, activable con `SWAGGER_ENABLED`.
+- **Pruebas**: **Vitest + supertest** (lo que trae Nest 12): unitarias en `src/**/*.spec.ts` y e2e en `test/*.e2e-spec.ts` contra PostgreSQL 16 en Docker (P9).
+- **Calidad**: **oxlint** con tipos + Prettier; `pnpm lint`, `pnpm test`, `pnpm test:e2e`.
+- **Build y despliegue en Render (plan gratuito)**: `buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod` (con `NODE_ENV=production`, pnpm omite las devDependencies y `nest build` falla; verificado) · `startCommand: node --max-old-space-size=384 dist/main.js`. Escucha en `0.0.0.0:$PORT`. Medido: ~0,6 s de arranque y ~135 MB de RAM. Optimizaciones en la sección 2.6.
 
-#### Estructura final del backend (reemplaza la sección 2 de `BACKEND_SPEC.md`)
+#### Estructura del backend (implementada en I1; detalle en `BACKEND_SPEC.md` §2)
 ```text
 decr27000-backend/
-├── package.json · pnpm-lock.yaml · nest-cli.json · tsconfig*.json · .env.example · render.yaml · README.md
-├── SEED_93_CONTROLES_Y_EMPRESA_ABC.sql
+├── package.json · pnpm-lock.yaml · nest-cli.json · tsconfig*.json · vitest.config*.ts · .oxlintrc.json
+├── .env.example · render.yaml · README.md · SEED_93_CONTROLES_Y_EMPRESA_ABC.sql
 ├── sql/security.sql                      # RLS + REVOKE para Supabase (B1.4)
 ├── src/
-│   ├── main.ts                           # NestFactory con FastifyAdapter, prefijo /api, helmet, CORS, Swagger, pipes globales
-│   ├── app.module.ts
-│   ├── config/        env.validation.ts
-│   ├── database/      database.module.ts · database.service.ts (Pool, query, withTransaction) · init-db.service.ts
-│   ├── common/
-│   │   ├── decorators/  public.decorator.ts · roles.decorator.ts · current-user.decorator.ts
-│   │   ├── guards/      jwt-auth.guard.ts · roles.guard.ts · audit-lock.guard.ts
-│   │   ├── filters/     all-exceptions.filter.ts      # sobre { ok:false, error, field }
-│   │   ├── interceptors/response.interceptor.ts       # sobre { ok:true, data }
-│   │   └── utils/       codes.ts (H-nn / EV-nn) · pg-errors.ts
+│   ├── main.ts                           # NestFactory + NodeAdapter
+│   ├── bootstrap.ts                      # /api, helmet, CORS, Swagger, shutdown hooks (compartido con las pruebas)
+│   ├── app.module.ts                     # guards, pipe, interceptor y filtro globales
+│   ├── config/env.ts
+│   ├── common/   app-error.ts · decorators.ts · guards.ts · validation.ts · response.interceptor.ts · all-exceptions.filter.ts
+│   ├── database/ database.service.ts · init-db.service.ts · seed-runner.ts · seed.ts · security.ts · pool.ts · cli.ts
 │   └── modules/
-│       ├── health/        GET /api/health (con estado de la BD)
-│       ├── auth/          login, me, estrategia JWT
-│       ├── usuarios/
-│       ├── controles/     catálogo de 93 controles + edición solo para admin
-│       ├── auditorias/    CRUD + máquina de estados (auditoria-estado.service.ts) + selección de controles
-│       ├── evaluaciones/
-│       ├── evidencias/
-│       ├── hallazgos/     hallazgos + recomendaciones
-│       ├── indicadores/   RF07 (lo usan dashboard e informes)
-│       ├── dashboard/
-│       ├── informes/      8 secciones, versiones, snapshot
-│       └── seed/          POST /api/seed/reset (protegido)
+│       ├── health/ · auth/ · usuarios/                      # hechos
+│       ├── controles/ · auditorias/                          # siguiente (B1.7–B1.9)
+│       ├── evaluaciones/ · evidencias/ · hallazgos/           # I2
+│       └── indicadores/ · dashboard/ · informes/ · seed/      # I3
 │       # cada módulo: *.module.ts · *.controller.ts · *.service.ts · dto/*.dto.ts
 └── test/
-    ├── helpers/ test-db.ts (BD desechable en Docker + semilla) · auth.ts (tokens)
-    └── cp-01..cp-13.e2e-spec.ts
+    ├── helpers/app.ts                    # resetTestDatabase (solo BD local), createTestApp, loginAs
+    └── *.e2e-spec.ts
 ```
 
 ### 2.2. Frontend — HTML + Tailwind + CSS (decisión del equipo)
@@ -139,7 +128,7 @@ decr27000-frontend/
 | Entorno | Backend | Base de datos | Frontend |
 | :--- | :--- | :--- | :--- |
 | Local | `pnpm start:dev` (Nest en modo watch, puerto 4000) | **Supabase** (el mismo proyecto; `.env` local del backend, ignorado por git). Docker es opcional para trabajar sin conexión. | servidor estático local → `http://localhost:4000/api` |
-| Pruebas automáticas | Jest + supertest (`pnpm test`, `pnpm test:e2e`) | PostgreSQL 16 en Docker (BD desechable) | Playwright contra local |
+| Pruebas automáticas | Vitest + supertest (`pnpm test`, `pnpm test:e2e`) | PostgreSQL 16 en Docker (BD desechable) | Playwright contra local |
 | Producción / demo | Render | Supabase | Vercel |
 
 ### 2.4. Definición de Terminado (DoD) para cualquier tarea
@@ -158,7 +147,7 @@ Reparto en **dos parejas por repositorio**: cada persona es dueña de un bloque 
 
 | Rol | Repo | Responsabilidad principal | I1 | I2 | I3 | Entregables a cargo |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Integrante 1 — Backend plataforma** | backend | Base de Nest + Fastify, configuración, BD, seguridad, autenticación y ciclo de vida de la auditoría | B1.0–B1.8, B1.10 (su parte) | B2.4 (reglas de transición), revisión de seguridad de las rutas nuevas | B3.4, B3.5, despliegue final en Render | 1. Modelado (arquitectura y modelo ER) |
+| **Integrante 1 — Backend plataforma** | backend | Base de Nest + NodeAdapter, configuración, BD, seguridad, autenticación y ciclo de vida de la auditoría | B1.0–B1.8, B1.10 (su parte) | B2.4 (reglas de transición), revisión de seguridad de las rutas nuevas | B3.4, B3.5, despliegue final en Render | 1. Modelado (arquitectura y modelo ER) |
 | **Integrante 2 — Backend proceso auditor** | backend | Catálogo, evaluación, evidencias, hallazgos, trazabilidad, indicadores e informes | B1.9 + sus pruebas | B2.1, B2.2, B2.3, B2.5, B2.6 | B3.1, B3.2, B3.3, B3.6 | 1. Modelado (casos de uso) · 6. Informe de auditoría (datos) |
 | **Integrante 3 — Frontend base y resultados** | frontend | Plantilla y CSS, núcleo JS, login, layout, auditoría, dashboard e informe | F1.1–F1.6 | F2.3 (ciclo de vida) + apoyo a F2.1 | F3.1, F3.2, F3.3 | 2. Prototipos · 6. Informe de auditoría (PDF) |
 | **Integrante 4 — Frontend ejecución y calidad** | frontend | Catálogo, evaluación, hallazgos, pruebas E2E y pulido | F1.7 | F2.1, F2.2 | F3.4, F3.5 | 5. Informe de pruebas · 7. Guion de sustentación |
@@ -171,12 +160,12 @@ Reglas del reparto:
 
 ### 2.6. Optimización para Render gratuito + Supabase
 
-Render gratuito ofrece **512 MB de RAM y 0,1 de CPU**, **suspende el servicio tras 15 min sin tráfico** y la primera petición tarda entre 30 y 60 s. Supabase está en `us-east-2` (Ohio). Cada punto apunta a gastar menos memoria y CPU, arrancar más rápido y hacer menos viajes a la base:
+Render gratuito ofrece **512 MB de RAM y 0,1 de CPU**, **suspende el servicio tras 15 min sin tráfico** y la primera petición tarda entre 30 y 60 s. Lo que limita el plan es el **cómputo en ejecución** (horas de instancia, RAM y CPU), no el build; por eso las optimizaciones se concentran en el tiempo de ejecución, aunque el build también se mantiene liviano. Supabase está en `us-east-2` (Ohio). Cada punto apunta a gastar menos memoria y CPU, arrancar más rápido y hacer menos viajes a la base:
 
 | # | Optimización | Cómo | Ganancia |
 | :---: | :--- | :--- | :--- |
 | O1 | **Misma región** para Render y Supabase | En Render, servicio en **Ohio** (`region: ohio`). Si hoy está en otra región, recrearlo en Ohio (la región no se puede cambiar después de creado). | Cada consulta pasa de ~40–70 ms a ~1–5 ms de red. Es la mejora más grande. |
-| O2 | **Fastify + `pg` directo** | Ya decidido (2.1). Sin ORM, sin Express. | Menos memoria y CPU por petición; arranque más rápido. |
+| O2 | **NodeAdapter + `pg` directo** | Ya decidido (2.1). Sin ORM, sin Express ni Fastify. | Menos memoria y CPU por petición; arranque más rápido. |
 | O3 | **Arrancar con `node`, no con `pnpm`** | `startCommand: node --max-old-space-size=384 dist/main.js`. | Se ahorra el proceso extra de pnpm (~40–60 MB) y el heap queda por debajo de 512 MB. |
 | O4 | **Solo dependencias de producción** | `pnpm prune --prod` al final del build. Compilar con `nest build` (tsc), sin webpack. | Menos memoria y un arranque en frío más corto. |
 | O5 | **Pool pequeño y persistente** | `max: 4`, `keepAlive: true`, `idleTimeoutMillis: 30000`, conexión por el **Session Pooler** (puerto 5432). Crear el pool una vez al arrancar y reutilizarlo. | Evita agotar las conexiones del plan gratuito de Supabase y repetir el handshake TLS (~1 s medido desde local). |
@@ -187,8 +176,9 @@ Render gratuito ofrece **512 MB de RAM y 0,1 de CPU**, **suspende el servicio tr
 | O10 | **Evitar la suspensión** (opcional) | Un monitor externo gratuito (UptimeRobot o cron-job.org) llama a `/api/health` cada 10 min en horario de trabajo y el día de la sustentación. Un solo servicio 24/7 consume ~744 h de las 750 h gratuitas del mes. | Sin arranques en frío durante la demo. |
 | O11 | **Respuestas pequeñas** | Solo los campos que usa la pantalla; sin `SELECT *` en listados; `bodyLimit` de 100 KB. | Menos CPU de serialización y menos ancho de banda. |
 | O12 | **Apagado limpio** | `enableShutdownHooks()` cierra el pool cuando Render suspende o redespliega. | No quedan conexiones colgadas en Supabase. |
+| O13 | **Build liviano** (secundario) | `pnpm install --frozen-lockfile` con el lockfile versionado, `nest build` con `tsc` (sin webpack ni bundlers), sin compilación incremental y sin pasos extra. | Despliegues rápidos y predecibles, aunque el build no sea lo que limita el plan gratuito. |
 
-> Las pruebas automáticas (Jest + supertest) siguen corriendo contra PostgreSQL en Docker, **nunca contra Supabase**, porque producción, demo y desarrollo local comparten la misma base.
+> Las pruebas automáticas (Vitest + supertest) siguen corriendo contra PostgreSQL en Docker, **nunca contra Supabase**, porque producción, demo y desarrollo local comparten la misma base.
 
 ### 2.7. Modo local del frontend (`js/seed-data.js`) y conexión con el backend real
 
@@ -231,37 +221,37 @@ flowchart LR
 **Objetivo**: dejar la base técnica completa y segura, más el primer tramo del flujo (paso 1 → paso 3 del stepper), desplegado y demostrable.
 
 #### Backend
-- [ ] **B1.0 Actualizar documentación al nuevo stack**: en `BACKEND_SPEC.md` reemplazar Express por NestJS + Fastify (secciones 1, 2, 2.1, 7 y la nota de CORS), y en `CLAUDE.md` ajustar los comandos. El contrato de API (sección 6) se mantiene igual.
-- [ ] **B1.1 Proyecto base NestJS + Fastify**
-  - Crear el esqueleto con `pnpm dlx @nestjs/cli new` (TypeScript estricto, pnpm) en una rama, conservando la semilla, `.env.example`, `.gitignore` y la documentación del repo. Eliminar el `index.js` actual.
-  - `pnpm add @nestjs/platform-fastify @fastify/helmet @nestjs/config @nestjs/jwt @nestjs/passport passport passport-jwt @nestjs/throttler @nestjs/swagger class-validator class-transformer pg bcryptjs`
-  - `pnpm add -D @types/pg @types/bcryptjs @types/passport-jwt` (Jest y supertest ya vienen con el CLI).
-  - `main.ts`: `NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: true }))`, `setGlobalPrefix('api')`, helmet, CORS, `ValidationPipe` global, `AllExceptionsFilter`, `ResponseInterceptor`, Swagger en `/api/docs`, `listen(PORT, '0.0.0.0')`, `enableShutdownHooks()`.
-  - `"engines": { "node": ">=22" }`; scripts `build`, `start:dev`, `start:prod`, `lint`, `test`, `test:e2e`, `db:seed`, `db:security`.
-  - `render.yaml`: `plan: free`, `region: ohio` (igual que Supabase `us-east-2`), `buildCommand: pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod`, `startCommand: node --max-old-space-size=384 dist/main.js`, `healthCheckPath: /api/health` (ver 2.6).
-- [ ] **B1.2 Configuración y entorno** (`config/env.validation.ts` con `@nestjs/config`)
-  - Validar todas las variables al arrancar (`DATABASE_URL`, `JWT_SECRET` de 32 caracteres o más, `JWT_EXPIRES_IN`, `CORS_ORIGINS`, `NODE_ENV`, `ALLOW_SEED_RESET`, `SWAGGER_ENABLED`). Si falta alguna, la app no arranca y lo dice claramente.
-  - En producción, rechazar el arranque si `JWT_SECRET` es igual al de `.env.example`.
-  - Actualizar `.env.example` con las variables nuevas (solo marcadores).
+> **Avance (13-nov-2026, rama `feat/nest-backend-base`)**: B1.0, B1.1, B1.2, B1.5 y B1.6 terminadas; B1.3, B1.4 y B1.10 avanzadas. 30 pruebas en verde (14 unitarias + 16 e2e). Pendiente con aprobación: ejecutar `pnpm db:security` en Supabase (las contraseñas están en texto plano y el login real falla hasta hacerlo).
+
+- [x] **B1.0 Actualizar documentación al nuevo stack**: `BACKEND_SPEC.md` (secciones 1, 2, 2.1, 2.2, 6.1 health y 7), `CLAUDE.md` y este plan pasan a NestJS 12 + NodeAdapter. El contrato de API (sección 6) se mantiene.
+- [x] **B1.1 Proyecto base NestJS 12 + NodeAdapter**
+  - Base del CLI oficial (ESM, Vitest, oxlint); se eliminó el `index.js` provisional.
+  - Dependencias: `@nestjs/{common,core,platform-node,config,jwt,swagger}`, `pg`, `bcryptjs`, `helmet`, `class-validator`, `class-transformer` (TypeScript 6 y Vitest 4: `@nestjs/swagger` aún no admite TypeScript 7).
+  - `main.ts` con `NodeAdapter`; `bootstrap.ts` compartido con las pruebas; `"engines": { "node": ">=22" }`; scripts `build`, `start`, `start:dev`, `start:prod`, `lint`, `test`, `test:e2e`, `db:seed`, `db:security`.
+  - `render.yaml` con `plan: free`, `region: ohio`, build con `NODE_ENV=development pnpm install` + `prune --prod`, `startCommand: node --max-old-space-size=384 dist/main.js`, `healthCheckPath: /api/health`.
+  - `tsconfig.build.json` sin compilación incremental (evita un `dist` vacío al recompilar con `deleteOutDir`).
+- [x] **B1.2 Configuración y entorno** (`config/env.ts`)
+  - Validación al arrancar de `DATABASE_URL`, `JWT_SECRET` (32+), `JWT_EXPIRES_IN` (8h), `DB_POOL_MAX`, `DB_SSL_CA`, `FRONTEND_URL`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `ALLOW_SEED_RESET`.
+  - En producción se rechaza el `JWT_SECRET` público de `.env.example` y cualquier marcador `[...]`.
+  - `.env.example` actualizado (solo marcadores).
 - [ ] **B1.3 Base de datos y semilla** (`database/`)
-  - `DatabaseService` global: `Pool` con SSL para Supabase (Session Pooler), `max: 4`, `idleTimeoutMillis: 30000`, `connectionTimeoutMillis: 10000`, `keepAlive: true`, métodos `query<T>()` y `withTransaction(fn)`. Cierra el pool en `onModuleDestroy`. Ver 2.6.
-  - `InitDbService` + script `pnpm db:seed` (`node dist/database/seed.js`): ejecuta la semilla y hashea con bcrypt (coste 10) toda contraseña que no empiece por `$2`.
-  - Al arrancar: si `control` no existe o tiene menos de 93 filas, inicializa la BD. **Nunca** reinicia una BD que ya tiene datos.
-  - **Verificación en Supabase** (una sola vez, con aprobación del equipo): contar controles, revisar `referentes` y el nombre del control 7.7, y comprobar que `password_hash` empiece por `$2`. Si tiene la semilla anterior, volver a sembrar con la corregida.
+  - [x] `DatabaseService` (pool `max 4`, keep-alive, timeouts, `statement_timeout 10s`, `withTransaction`) y TLS verificable con `DB_SSL_CA`.
+  - [x] `InitDbService`: al arrancar solo verifica el catálogo; si no hay tablas o están vacías, carga la semilla. Nunca reinicia una BD con datos.
+  - [x] `pnpm db:seed` (borra todo; contra BD remota exige `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC`).
+  - [ ] **Verificación en Supabase**: ya se confirmó que tiene 93 controles y que **las contraseñas están en texto plano**. Falta revisar si tiene la semilla corregida (referentes ISO 19011:2026, nombre del control 7.7) y decidir si se vuelve a sembrar.
 - [ ] **B1.4 Seguridad de Supabase** (`sql/security.sql`, `pnpm db:security`)
-  - `ALTER TABLE … ENABLE ROW LEVEL SECURITY` en las 8 tablas, sin políticas. El backend se conecta como dueño de las tablas y no se ve afectado.
-  - `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;` y lo mismo para secuencias.
-  - Verificar que el panel de Supabase ya no muestre la alerta "RLS disabled".
-- [ ] **B1.5 Infraestructura HTTP** (`common/`)
-  - `@fastify/helmet`; CORS con lista blanca (`FRONTEND_URL`, `https://*.vercel.app` del proyecto, `http://localhost:*`); `bodyLimit` de Fastify en 100 KB; logger pino de Fastify con id por petición.
-  - `AllExceptionsFilter`: traduce `HttpException`, errores del `ValidationPipe` y errores de PostgreSQL (`23505` → 409, `23503` → 409, `23514` → 400) al sobre `{ ok:false, error, field? }`. Nunca expone la traza en producción. Las rutas inexistentes también responden 404 con ese formato.
-  - `ResponseInterceptor`: envuelve las respuestas en `{ ok:true, data, message? }`.
-  - `HealthModule` (`@Public()`): `GET /api/health` → `{ ok, status, service, timestamp }` sin tocar la BD (es el que usa Render); `GET /api/health?db=1` agrega `db: "UP|DOWN"` con un `SELECT 1` (ver O9 en 2.6).
-- [ ] **B1.6 Autenticación y roles** (RNF04, `modules/auth`, `modules/usuarios`)
-  - `POST /api/auth/login` (`@Public()`) con `@Throttle` de 10 intentos cada 15 min por IP y mensaje genérico ("Credenciales inválidas").
+  - [x] Script idempotente: RLS en las 8 tablas, `REVOKE` de `anon` y `authenticated` (y sus privilegios por defecto), hash de contraseñas en texto plano. Probado en Docker.
+  - [ ] Ejecutarlo en Supabase (requiere aprobación del equipo) y verificar que el panel ya no muestre la alerta "RLS disabled".
+  - [ ] Descargar la CA de Supabase y definir `DB_SSL_CA` en el `.env` local y en Render.
+- [x] **B1.5 Infraestructura HTTP** (`common/`)
+  - `helmet` (sin CSP: la API solo devuelve JSON), CORS con lista blanca, límite de cuerpo de 100 KB (por defecto en `NodeAdapter`).
+  - `AllExceptionsFilter` y `ResponseInterceptor` con el contrato; las rutas inexistentes responden `404 "Ruta no encontrada"` (compatibilidad con el motor local del frontend).
+  - `GET /api/health` sin BD y `GET /api/health?db=1` con `SELECT 1`.
+- [x] **B1.6 Autenticación y roles** (RNF04, `modules/auth`, `modules/usuarios`)
+  - `POST /api/auth/login` con `LoginRateLimitGuard` (10 intentos por IP cada 15 min, IP real desde `X-Forwarded-For`), mensaje genérico y tiempo de respuesta constante aunque el correo no exista.
   - `GET /api/auth/me` y `GET /api/usuarios` (sin `password_hash`).
-  - `JwtAuthGuard` global (`401` si falta o expiró) + `RolesGuard` con `@Roles('admin')` (`403`) + decorador `@CurrentUser()`.
-  - JWT con `sub`, `rol` y `nombre`; expiración `8h` (P5).
+  - `JwtAuthGuard` global (verifica el JWT sin ir a la BD) + `RolesGuard` con `@Roles('admin')` + `@CurrentUser()`. JWT con `sub`, `rol`, `nombre`, `correo` e `issuer`; expiración `8h`.
+  - Si una contraseña sigue en texto plano, el login la rechaza y el log indica ejecutar `pnpm db:security`.
 - [ ] **B1.7 Auditorías** (RF01, RN01, CP-01, CP-02)
   - `GET /api/auditorias` (con métricas resumidas), `GET /api/auditorias/:id`, `POST`, `PUT`.
   - DTOs con `class-validator`: obligatorios, longitudes (`organizacion` ≤ 120), `@IsDateString()` y un validador propio para `fecha_fin >= fecha_inicio` con `field: "fecha_fin"`.
@@ -277,8 +267,10 @@ flowchart LR
   - `PUT /api/auditorias/:id/seleccion-controles`: valida 10–15 IDs únicos y existentes; sincroniza en una transacción (borra los quitados, inserta los nuevos en `PENDIENTE`, conserva los existentes); pasa `BORRADOR → EN_EJECUCION`. Si un control que se quita ya tiene evidencias o hallazgos, responde `409` explicando por qué (protege la trazabilidad).
   - `GET /api/auditorias/:id/evaluaciones` (versión base: lista con estado; I2 agrega evidencias y hallazgos anidados).
 - [ ] **B1.10 Pruebas y documentación**
-  - `test/helpers/test-db.ts`: crea una BD desechable en Docker, ejecuta la semilla y la limpia; `test/helpers/auth.ts` genera tokens de auditor y admin.
-  - Pruebas e2e (Jest + supertest sobre `app.getHttpAdapter().getInstance()` de Fastify): login correcto e incorrecto, `401` sin token, CP-01, CP-02, CP-03 (9, 16 y 13 controles), CP-13 (auditor edita catálogo → 403).
+  - [x] `test/helpers/app.ts`: restaura la semilla en la BD de Docker (se niega a tocar una BD remota), levanta la app con `NodeAdapter` y genera tokens de auditor y admin.
+  - [x] 16 pruebas e2e de plataforma (health, 404, 401, login correcto/incorrecto/validaciones, 429 por intentos, `/me`, `/usuarios`, CORS) y 14 unitarias (entorno y lista blanca de CORS).
+  - [x] `README.md` con requisitos, `.env`, scripts pnpm, Docker, Swagger y despliegue en Render.
+  - Pruebas e2e (Vitest + supertest sobre `app.getHttpServer()`): login correcto e incorrecto, `401` sin token, CP-01, CP-02, CP-03 (9, 16 y 13 controles), CP-13 (auditor edita catálogo → 403).
   - Pruebas unitarias de `AuditoriaEstadoService` (transiciones válidas e inválidas).
   - `README.md`: requisitos, `.env`, comandos pnpm, cómo levantar PostgreSQL en Docker y enlace a Swagger (`/api/docs`).
 
@@ -466,7 +458,7 @@ flowchart LR
 
 | # | Tema | Decisión | Qué implica en el plan |
 | :---: | :--- | :--- | :--- |
-| — | Framework del backend | **NestJS + Fastify** (el adaptador más rápido de Nest), con pnpm | Secciones 2.1, B1.0, B1.1. El contrato REST no cambia. |
+| — | Framework del backend | **NestJS 12 + NodeAdapter** (el adaptador más rápido de Nest 12; reemplazó a Fastify el 13-nov), con pnpm | Secciones 2.1, B1.0, B1.1. El contrato REST no cambia. |
 | P1 | Acceso a la base de datos | **`pg` directo** en un `DatabaseModule` global, sin ORM | B1.3. La semilla SQL es la única fuente del esquema; los `CHECK` y las llaves foráneas quedan visibles para la rúbrica. |
 | P4 | Estilos del frontend | **Lo más simple: HTML + Tailwind por CDN (versión fija) + `css/styles.css` a mano, sin build** | Sección 2.2 y F1.1. Vercel sirve archivos estáticos; pnpm solo para lint y pruebas. |
 | P5 | Sesión | **JWT en `localStorage`**, expiración de 8 h | B1.6, F1.2. Obliga a escapar todo lo que se pinta (sin `innerHTML` con datos de la API). |
@@ -481,7 +473,7 @@ flowchart LR
 | P2 | ¿Swagger (`/api/docs`) en producción? | **Activo durante el curso** (`SWAGGER_ENABLED=true`) | Permite mostrar y probar el contrato de API en la sustentación. Las rutas siguen protegidas con JWT. Se apaga con una variable. |
 | P3 | ¿Validación con `class-validator` o con zod? | **class-validator** | Es lo nativo de Nest con el `ValidationPipe`, y Swagger documenta los DTOs automáticamente. |
 | P8 | ¿Subir archivos de evidencia o solo la referencia? | **Solo referencia en el MVP**; Supabase Storage como opcional al final del I3 | Las evidencias son simuladas y el curso no exige archivos; subirlos suma complejidad y no suma a la rúbrica. |
-| P9 | ¿Qué pruebas automatizar? | **Backend con Jest + supertest y E2E del frontend con Playwright** | "Pruebas y calidad" vale 10 % y el informe de pruebas es un entregable: las pruebas automáticas son la evidencia de CP-01 a CP-13. |
+| P9 | ¿Qué pruebas automatizar? | **Backend con Vitest + supertest y E2E del frontend con Playwright** | "Pruebas y calidad" vale 10 % y el informe de pruebas es un entregable: las pruebas automáticas son la evidencia de CP-01 a CP-13. |
 | P10 | ¿CORS abierto o con lista blanca? | **Lista blanca** (`FRONTEND_URL`, previews de Vercel del proyecto, localhost) | Es la práctica correcta y suma en "seguridad básica". |
 | P11 | ¿Flujo de ramas? | **Ramas + PR con revisión cruzada y preview de Vercel** | Con 4 personas en 2 repos evita pisarse, deja trazabilidad del aporte de cada uno y protege la demo desplegada. |
 | P12 | ¿Historial de cambios de estado de la auditoría? | **Sí, como opcional del I3** | Refuerza la trazabilidad, pero no está en los criterios de aceptación. |
@@ -512,7 +504,7 @@ flowchart LR
 
 | Día | Backend | Frontend | Hito |
 | :---: | :--- | :--- | :--- |
-| 1 | B1.0, B1.1, B1.2, B1.3 | F1.1, F1.2 | Proyectos base desplegados (Nest + Fastify en Render) |
+| 1 | B1.0, B1.1, B1.2, B1.3 | F1.1, F1.2 | Proyectos base desplegados (Nest 12 + NodeAdapter en Render) |
 | 2 | B1.4, B1.5, B1.6 | F1.3, F1.4 | Login de punta a punta en producción |
 | 3 | B1.7, B1.8 | F1.5, F1.6 | Auditorías CRUD |
 | 4 | B1.9, B1.10 | F1.7 | Catálogo y selección |

@@ -1,6 +1,6 @@
 # AUDITSYS MINI — ESPECIFICACIÓN TÉCNICA COMPLETA DE BACKEND Y BASE DE DATOS (`/backend`)
 
-> **Propósito de este documento**: Este archivo contiene la especificación técnica, arquitectónica, de base de datos, reglas de negocio y contrato de API REST **100% autocontenida** para que una Inteligencia Artificial (o equipo de desarrollo) construya de principio a fin el módulo `/backend` de **AuditSys Mini – Sistema de Gestión de Auditorías de Sistemas de Información (ISO/IEC 27001:2022 & ISO/IEC 27002:2022)**.
+> **Propósito de este documento**: Este archivo contiene la especificación técnica, arquitectónica, de base de datos, reglas de negocio y contrato de API REST **100% autocontenida** para que una Inteligencia Artificial (o equipo de desarrollo) construya de principio a fin el repositorio `decr27000-backend` de **AuditSys Mini – Sistema de Gestión de Auditorías de Sistemas de Información (ISO/IEC 27001:2022 & ISO/IEC 27002:2022)**.
 
 ---
 
@@ -15,101 +15,81 @@
 
 > **Nota de vigencia normativa (verificada en noviembre de 2026)**: los documentos académicos de origen (`Proyecto_Academico_AuditSys_Mini.docx` y `AuditSys_Mini_Proyecto_Ejemplo.docx`) citan **ISO 19011:2018**, que fue retirada al publicarse **ISO 19011:2026**. En todo el sistema (semilla SQL, valor por defecto de `referentes`, informe y frontend) se usa la cadena oficial: **`ISO 19011:2026; ISO/IEC 27001:2022; ISO/IEC 27002:2022`**. Los 93 controles del catálogo corresponden a ISO/IEC 27002:2022 (la estructura anterior de 2013, con 114 controles en 14 dominios, **no** se usa).
 - **Arquitectura del Repositorio**: Dos repositorios sincronizados en GitHub:
-  - **Backend (`JuanDulcey/decr27000-backend`)**: API RESTful en **Node.js + Express + PostgreSQL (`pg`)**, desplegada en **Render** en la URL oficial: `https://decr27000-backend.onrender.com` (prefijo API: `https://decr27000-backend.onrender.com/api`).
+  - **Backend (`JuanDulcey/decr27000-backend`)**: API RESTful en **NestJS 12 (`NodeAdapter`) + TypeScript + PostgreSQL (`pg`)**, desplegada en **Render** en la URL oficial: `https://decr27000-backend.onrender.com` (prefijo API: `https://decr27000-backend.onrender.com/api`).
   - **Frontend (`JuanDulcey/decr27000-frontend`)**: Aplicación Web Multipágina (MPA) en **HTML5 + CSS3 (Variables CSS + Tailwind CDN) + Vanilla JavaScript (ES6 Modules)**, desplegada en **Vercel** en la URL oficial: `https://decr27000-frontend.vercel.app`.
-- **Base de Datos**: **PostgreSQL** (compatible con AWS RDS, Neon, Supabase o PostgreSQL local) conectada mediante la variable de entorno `DATABASE_URL` y el driver nativo `pg` con consultas SQL parametrizadas (sin ORM opaco, para evidenciar explícitamente llaves foráneas, restricciones `CHECK` y funciones SQL exigidas por la rúbrica académica).
+- **Base de Datos**: **PostgreSQL en Supabase** (PostgreSQL 17, Session Pooler, región `us-east-2`; compatible con PostgreSQL local o Docker para pruebas) conectada mediante la variable de entorno `DATABASE_URL` y el driver nativo `pg` con consultas SQL parametrizadas (sin ORM opaco, para evidenciar explícitamente llaves foráneas, restricciones `CHECK` y funciones SQL exigidas por la rúbrica académica).
 
 ---
 
 ## 2. Estructura de Carpetas del Repositorio Backend (`decr27000-backend`)
 
-La IA debe generar exactamente la siguiente estructura modular en la raíz del repositorio `decr27000-backend` (cumpliendo el requisito no funcional de mantenibilidad **RNF06**):
+> **Stack decidido por el equipo (nov-2026)**: **NestJS 12 + `NodeAdapter`** (`@nestjs/platform-node`, el adaptador HTTP más rápido de Nest 12: ~5 % más que Fastify y ~50 % más que Express según la documentación oficial; recomendado desde la 12.3 y default en la 13). TypeScript en ESM, `pg` sin ORM, `class-validator` para los DTOs, Vitest + supertest para las pruebas y oxlint como linter. Reemplaza a la versión con Express de este documento; el **contrato de la API (sección 6) no cambia**. Todo se gestiona con **pnpm**.
+
+Estructura modular (cumple el requisito no funcional de mantenibilidad **RNF06**). Cada módulo de negocio tiene `*.module.ts`, `*.controller.ts`, `*.service.ts` y `dto/`:
 
 ```text
 decr27000-backend/
-├── package.json
-├── .env.example
-├── render.yaml
-├── SEED_93_CONTROLES_Y_EMPRESA_ABC.sql # Script SQL completo en la raíz (y/o en sql/init.sql)
-└── src/
-    ├── server.js                     # Punto de entrada: inicia servidor HTTP y verifica conexión BD
-    ├── app.js                        # Configuración de Express, CORS, JSON body-parser, rutas y manejo de errores
-    ├── config/
-    │   ├── db.js                     # Pool de conexión pg (DATABASE_URL con soporte SSL)
-    │   └── initDb.js                 # Script ejecutable (npm run db:seed) que carga sql/init.sql y hashea passwords
-    ├── middlewares/
-    │   ├── auth.middleware.js        # Verificación de JWT (verifyToken) y control de roles (requireRole('admin'))
-    │   └── auditLock.middleware.js   # Bloquea mutaciones (403) si la auditoría está en estado 'CERRADA' (CP-13)
-    ├── controllers/
-    │   ├── auth.controller.js        # Login, perfil actual, listado de usuarios auditores
-    │   ├── dashboard.controller.js   # Indicadores globales y por auditoría (RF09, CP-11)
-    │   ├── auditorias.controller.js  # CRUD de auditorías, validaciones de transición de estado (RF01, CP-01..CP-08)
-    │   ├── controles.controller.js   # Consulta de los 93 controles ISO 27002 y edición restringida a 'admin' (RF02, CP-13)
-    │   ├── evaluaciones.controller.js# Selección de 10-15 controles y evaluación de estado/observación (RF02, RF03, CP-03..CP-06)
-    │   ├── evidencias.controller.js  # Registro y eliminación de evidencias con marca es_simulada (RF04, CP-06)
-    │   ├── hallazgos.controller.js   # Registro de hallazgos (H-nn) y recomendaciones asociadas (RF05, RF06, CP-07, CP-08)
-    │   └── informes.controller.js    # Cálculo de indicadores (RF07), trazabilidad (RNF05) y snapshot de informe (RF08, CP-09, CP-10)
-    └── routes/
-        ├── auth.routes.js
-        ├── dashboard.routes.js
-        ├── auditorias.routes.js
-        ├── controles.routes.js
-        ├── evaluaciones.routes.js
-        ├── evidencias.routes.js
-        ├── hallazgos.routes.js
-        └── informes.routes.js
+├── package.json · pnpm-lock.yaml · nest-cli.json · tsconfig*.json · vitest.config*.ts · .oxlintrc.json
+├── .env.example · render.yaml · README.md · BACKEND_SPEC.md · PLAN_DESARROLLO.md
+├── SEED_93_CONTROLES_Y_EMPRESA_ABC.sql   # esquema + 93 controles + Empresa ABC (fuente única del esquema)
+├── sql/security.sql                      # RLS + REVOKE de anon/authenticated para Supabase
+├── src/
+│   ├── main.ts                           # NestFactory + NodeAdapter; escucha en 0.0.0.0:$PORT
+│   ├── bootstrap.ts                      # prefijo /api, helmet, CORS con lista blanca, Swagger, shutdown hooks
+│   ├── app.module.ts                     # módulos + APP_GUARD (JWT, roles), APP_PIPE, APP_INTERCEPTOR, APP_FILTER
+│   ├── config/env.ts                     # validación de variables al arrancar
+│   ├── common/
+│   │   ├── app-error.ts                  # AppError → { ok:false, error, field? }
+│   │   ├── decorators.ts                 # @Public(), @Roles(), @RawResponse(), @CurrentUser(), ApiMessage
+│   │   ├── guards.ts                     # JwtAuthGuard (global), RolesGuard (global), LoginRateLimitGuard
+│   │   ├── validation.ts                 # ValidationPipe global con mensajes y field
+│   │   ├── response.interceptor.ts       # sobre { ok:true, data, message? }
+│   │   └── all-exceptions.filter.ts      # errores HTTP y de PostgreSQL → sobre de error
+│   ├── database/
+│   │   ├── database.service.ts           # Pool pg (query, one, withTransaction, ping)
+│   │   ├── init-db.service.ts            # al arrancar: si no hay catálogo, carga la semilla
+│   │   ├── seed-runner.ts                # semilla + hash bcrypt + seguridad (compartido)
+│   │   └── seed.ts · security.ts         # scripts pnpm db:seed / pnpm db:security
+│   └── modules/
+│       ├── health/ · auth/ · usuarios/                     # Incremento 1 (base)
+│       ├── controles/ · auditorias/                         # Incremento 1 (RF01, RF02)
+│       ├── evaluaciones/ · evidencias/ · hallazgos/          # Incremento 2 (RF03–RF06)
+│       └── indicadores/ · dashboard/ · informes/ · seed/     # Incremento 3 (RF07–RF09)
+└── test/                                 # e2e con Vitest + supertest contra PostgreSQL en Docker
 ```
 
 ### 2.1. Dependencias (`package.json`)
 
-```json
-{
-  "name": "decr27000-backend",
-  "version": "1.0.0",
-  "description": "API REST para DECR 27000 (AuditSys Mini) - Gestión de Auditorías ISO/IEC 27002:2022",
-  "main": "src/server.js",
-  "packageManager": "pnpm@9.12.0",
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "db:seed": "node src/config/initDb.js"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.12.0"
-  }
-}
-```
+| Tipo | Paquetes |
+| :--- | :--- |
+| Ejecución | `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-node` (12.x), `@nestjs/config`, `@nestjs/jwt`, `@nestjs/swagger`, `pg`, `bcryptjs`, `helmet`, `class-validator`, `class-transformer`, `reflect-metadata`, `rxjs` |
+| Desarrollo | `@nestjs/cli`, `@nestjs/schematics`, `@nestjs/testing`, `typescript` 6.x, `vitest` 4.x, `vite` 8.x, `supertest`, `oxlint`, `prettier`, `@types/*` |
+
+Scripts: `build`, `start` / `start:prod` (`node --max-old-space-size=384 dist/main.js`), `start:dev`, `lint`, `format`, `test`, `test:e2e`, `db:seed`, `db:security`. `"engines": { "node": ">=22" }`, `"packageManager": "pnpm@9.12.0"`.
+
+El límite de intentos de login es propio y en memoria (`LoginRateLimitGuard`, 10 intentos por IP cada 15 min). No se usa `@nestjs/throttler`, para no sumar dependencias y no depender del objeto de respuesta de un adaptador concreto.
 
 ### 2.2. Variables de Entorno (`.env.example`)
 
-```env
-PORT=4000
-NODE_ENV=development
-DATABASE_URL=postgresql://postgres.agnkxidlirvkwwfavsvt:[PASSWORD]@aws-0-us-east-2.pooler.supabase.com:5432/postgres
-DB_HOST=aws-0-us-east-2.pooler.supabase.com
-DB_PORT=5432
-DB_NAME=postgres
-DB_USER=postgres.agnkxidlirvkwwfavsvt
-DB_PASSWORD=[PASSWORD]
-DB_SSL=true
-SUPABASE_URL=https://agnkxidlirvkwwfavsvt.supabase.co
-JWT_SECRET=decr27000_iso27002_secret_key_2026_segura
-JWT_EXPIRES_IN=7d
-CORS_ORIGIN=*
-FRONTEND_URL=https://decr27000-frontend.vercel.app
-BACKEND_URL=https://decr27000-backend.onrender.com
-```
+| Variable | Obligatoria | Por defecto | Uso |
+| :--- | :---: | :--- | :--- |
+| `DATABASE_URL` | Sí | — | Supabase Session Pooler (puerto 5432). |
+| `JWT_SECRET` | Sí | — | 32 caracteres o más. En producción se rechaza el valor público de `.env.example` y cualquier marcador `[...]`. |
+| `PORT` | No | `4000` | Render lo define automáticamente. |
+| `NODE_ENV` | No | `development` | `production` en Render; `test` en las pruebas (ignora `.env`). |
+| `DB_POOL_MAX` | No | `4` | Conexiones del pool (plan gratuito). |
+| `DB_SSL_CA` | Recomendada | — | CA de Supabase en PEM. Con ella se verifica el certificado TLS; sin ella, la conexión va cifrada pero sin verificar (el backend lo advierte en el log). |
+| `JWT_EXPIRES_IN` | No | `8h` | Duración de la sesión (decisión P5). |
+| `FRONTEND_URL` | No | `https://decr27000-frontend.vercel.app` | Origen permitido por CORS. |
+| `CORS_ORIGINS` | No | — | Orígenes extra separados por comas (`*` se ignora). |
+| `SWAGGER_ENABLED` | No | `true` en desarrollo, `false` en producción | Documentación en `/api/docs`. |
+| `ALLOW_SEED_RESET` | No | `false` | Habilita `POST /api/seed/reset` (solo admin; Incremento 3). |
 
-> **Configuración de CORS en `src/app.js`**:
-> Habilitar `app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }))` para permitir comunicación total sin bloqueos desde `https://decr27000-frontend.vercel.app`, subdominios preview de Vercel (`*.vercel.app`) y entornos locales (`http://localhost:*`).
+> **CORS (lista blanca, decisión P10)**: se permiten `FRONTEND_URL`, los previews de Vercel del proyecto (`https://decr27000-frontend-*.vercel.app`), `http://localhost:*` / `http://127.0.0.1:*` y los orígenes de `CORS_ORIGINS`. Métodos `GET, POST, PUT, PATCH, DELETE, OPTIONS`; cabeceras `Content-Type, Authorization`.
 
-> **Nota sobre Conexión a PostgreSQL (`src/config/db.js`)**:
-> Configurar `new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false } })` para que funcione sin cambios tanto en PostgreSQL local como en AWS RDS, Neon o Supabase.
+> **Conexión a PostgreSQL (`src/database/pool.ts`)**: SSL desactivado para bases locales; para Supabase, `{ ca, rejectUnauthorized: true }` si hay `DB_SSL_CA`, o `{ rejectUnauthorized: false }` si no la hay. Pool: `max 4`, `keepAlive`, `idleTimeoutMillis 30000`, `connectionTimeoutMillis 10000`, `statement_timeout 10000`.
+
+> **Compatibilidad con el frontend durante la migración**: las rutas que aún no existen responden `404 { ok:false, error:"Ruta no encontrada" }`, el mismo texto que usaba el backend provisional. Así el frontend sigue usando su motor local (`js/seed-data.js`) para esas rutas mientras se implementan (PLAN §2.7).
 
 ---
 
@@ -366,7 +346,8 @@ Todas las respuestas siguen el sobre JSON estándar:
 
 ### 6.1. Salud y Semilla de Base de Datos
 - **`GET /api/health`** (Público)
-  - Respuesta `200`: `{ "ok": true, "status": "UP", "service": "auditsys-mini-backend", "timestamp": "..." }`
+  - Respuesta `200`: `{ "ok": true, "status": "UP", "service": "decr27000-backend", "timestamp": "..." }` (sin el sobre `data`; no consulta la BD).
+  - **`GET /api/health?db=1`** agrega `"db": "UP" | "DOWN"` tras un `SELECT 1` (si la BD no responde, `ok` es `false`).
 - **`POST /api/seed/reset`** (Protegido o disponible para restaurar datos de demostración de Empresa ABC)
   - Reinicia la base de datos al estado limpio de `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` (útil durante pruebas o antes de una sustentación).
   - Respuesta `200`: `{ "ok": true, "message": "Base de datos restaurada con los 93 controles ISO 27002:2022 y el caso Empresa ABC." }`
@@ -636,30 +617,43 @@ Todas las respuestas siguen el sobre JSON estándar:
 
 ---
 
-## 7. Despliegue del Backend en Render (`render.yaml`)
+## 7. Despliegue del Backend en Render (`render.yaml`, plan gratuito)
 
-Incluir un archivo `render.yaml` en la raíz del repositorio y soporte de `PORT` dinámico (`process.env.PORT || 4000`) para despliegue inmediato en Render:
+Valores optimizados para Render gratuito (512 MB de RAM, 0,1 de CPU, se suspende tras 15 min sin tráfico). Detalle en PLAN_DESARROLLO.md §2.6.
 
 ```yaml
 services:
   - type: web
     name: decr27000-backend
-    env: node
-    buildCommand: pnpm install
-    startCommand: pnpm start
+    runtime: node
+    plan: free
+    region: ohio            # misma región que Supabase (us-east-2)
+    buildCommand: NODE_ENV=development pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod
+    startCommand: node --max-old-space-size=384 dist/main.js
+    healthCheckPath: /api/health
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: JWT_SECRET
-        generateValue: true
-      - key: DATABASE_URL
-        sync: false
-      - key: CORS_ORIGIN
-        value: "*"
+      - { key: NODE_ENV, value: production }
+      - { key: DATABASE_URL, sync: false }
+      - { key: DB_SSL_CA, sync: false }
+      - { key: DB_POOL_MAX, value: "4" }
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: JWT_EXPIRES_IN, value: 8h }
+      - { key: FRONTEND_URL, value: https://decr27000-frontend.vercel.app }
+      - { key: SWAGGER_ENABLED, value: "true" }
+      - { key: ALLOW_SEED_RESET, value: "false" }
 ```
 
-### Auto-inicialización Segura de Base de Datos al Arrancar (`src/server.js`)
-Al iniciar el servidor (`npm start`), el backend debe verificar si la tabla `control` existe y tiene los 93 registros (`SELECT COUNT(*) FROM control`). Si la base de datos está vacía o las tablas no existen, el servidor debe ejecutar automáticamente el script de inicialización (`SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` + hasheo bcrypt de las contraseñas de los usuarios semilla) para garantizar que al desplegar en Render o AWS la base de datos quede 100% lista y poblada en el primer arranque sin intervención manual.
+- `NODE_ENV=development` va **solo en la instalación**: con `production`, pnpm omite las devDependencies (`@nestjs/cli`, `typescript`) y el build falla con `nest: command not found` (verificado). `pnpm prune --prod` las elimina al final.
+- Se arranca con `node` directo (sin `pnpm`) y con el heap limitado a 384 MB. Medición local del build de producción: **~0,6 s de arranque y ~135 MB de RAM**.
+- `GET /api/health` no toca la BD (lo consulta Render); `GET /api/health?db=1` verifica la conexión.
+- Si el servicio se creó desde el panel de Render (sin Blueprint), estos valores se copian en **Settings → Build & Deploy** antes de fusionar la rama que reemplaza el `index.js` provisional.
+
+### Auto-inicialización segura de la base de datos al arrancar (`src/database/init-db.service.ts`)
+Al iniciar, el backend solo ejecuta `SELECT to_regclass('public.control')` y `SELECT COUNT(*) FROM control`. Si las tablas no existen o el catálogo está vacío, carga `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql`, hashea las contraseñas con bcrypt y aplica `sql/security.sql`, todo en una transacción. **Nunca** reinicia una base que ya tiene datos. Si la verificación falla, el servidor sigue arrancando (el health check responde) y el error queda en el log.
+
+### Scripts de mantenimiento de la BD
+- `pnpm db:security`: activa RLS en las 8 tablas, revoca privilegios de `anon` y `authenticated` (PostgREST de Supabase) y hashea contraseñas que sigan en texto plano. Es idempotente y no borra datos.
+- `pnpm db:seed`: **borra todo** y vuelve a cargar la semilla. Contra una base remota se niega a correr salvo con `SEED_CONFIRM=RESTAURAR-EMPRESA-ABC pnpm db:seed`.
 
 ---
 
