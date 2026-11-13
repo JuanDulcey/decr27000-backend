@@ -16,8 +16,13 @@ export const RAW_RESPONSE_KEY = 'rawResponse';
 /** Ruta accesible sin token (login, health). */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
+export const FORBIDDEN_MESSAGE_KEY = 'forbiddenMessage';
+
 /** Restringe la ruta a los roles indicados (RNF04 / CP-13). */
 export const Roles = (...roles: Rol[]) => SetMetadata(ROLES_KEY, roles);
+
+/** Mensaje del 403 cuando el rol no alcanza (p. ej. el texto oficial de CP-13). */
+export const ForbiddenMessage = (message: string) => SetMetadata(FORBIDDEN_MESSAGE_KEY, message);
 
 /** La respuesta se envía tal cual, sin el sobre { ok, data } (p. ej. /api/health). */
 export const RawResponse = () => SetMetadata(RAW_RESPONSE_KEY, true);

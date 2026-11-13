@@ -1,5 +1,17 @@
 import pg from 'pg';
 
+/*
+ * Conversión de tipos de PostgreSQL a JSON del contrato:
+ * - DATE (1082) se mantiene como 'YYYY-MM-DD' (sin desfase de zona horaria).
+ * - NUMERIC (1700), p. ej. cumplimiento_base del informe, como número.
+ * - BIGINT (20), p. ej. COUNT(*), como número (los conteos de este dominio son pequeños).
+ */
+pg.types.setTypeParser(1082, (value: string) => value);
+pg.types.setTypeParser(1700, (value: string) => Number.parseFloat(value));
+pg.types.setTypeParser(20, (value: string) => Number.parseInt(value, 10));
+// TIMESTAMP sin zona (1114): las columnas *_en guardan UTC (zona por defecto de Supabase y Docker).
+pg.types.setTypeParser(1114, (value: string) => new Date(`${value.replace(' ', 'T')}Z`));
+
 /** true si la URL apunta a una base local (Docker o PostgreSQL instalado). */
 export function isLocalDatabase(url: string): boolean {
   try {

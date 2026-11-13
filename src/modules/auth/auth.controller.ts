@@ -1,8 +1,10 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import type { IncomingMessage } from 'node:http';
+import { AppError } from '../../common/app-error.js';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Public } from '../../common/decorators.js';
 import type { AuthUser } from '../../common/decorators.js';
-import { LoginRateLimitGuard } from '../../common/guards.js';
+import { clientIp, LoginRateLimitGuard } from '../../common/guards.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './login.dto.js';
 
@@ -16,8 +18,18 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Inicia sesión y devuelve un JWT (RNF04)' })
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.correo, dto.password);
+  async login(@Body() dto: LoginDto, @Req() req: IncomingMessage) {
+    const ip = clientIp(req);
+    try {
+      const sesion = await this.auth.login(dto.correo, dto.password);
+      LoginRateLimitGuard.reset(ip);
+      return sesion;
+    } catch (err) {
+      if (err instanceof AppError && err.getStatus() === HttpStatus.UNAUTHORIZED) {
+        LoginRateLimitGuard.registerFailure(ip);
+      }
+      throw err;
+    }
   }
 
   @ApiBearerAuth()

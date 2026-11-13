@@ -3,7 +3,8 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { IncomingMessage } from 'node:http';
 import { AppError } from './app-error.js';
-import { AuthUser, IS_PUBLIC_KEY, Rol, ROLES_KEY } from './decorators.js';
+import { FORBIDDEN_MESSAGE_KEY, IS_PUBLIC_KEY, ROLES_KEY } from './decorators.js';
+import type { AuthUser, Rol } from './decorators.js';
 
 interface JwtPayload {
   sub: number;
@@ -59,7 +60,11 @@ export class RolesGuard implements CanActivate {
     if (!roles || roles.length === 0) return true;
     const user = context.switchToHttp().getRequest<{ user?: AuthUser }>().user;
     if (user && roles.includes(user.rol)) return true;
-    throw AppError.forbidden('Acceso denegado: su rol no tiene permiso para esta operación.');
+    const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    throw AppError.forbidden(message ?? 'Acceso denegado: su rol no tiene permiso para esta operación.');
   }
 }
 
@@ -71,37 +76,45 @@ export function clientIp(req: IncomingMessage): string {
 }
 
 /**
- * Límite de intentos de login: 10 por IP cada 15 minutos (PLAN B1.6).
+ * Límite de intentos FALLIDOS de login: 10 por IP cada 15 minutos (PLAN B1.6).
+ * Los inicios de sesión correctos no cuentan y limpian el contador, así varios integrantes
+ * detrás de la misma IP (p. ej. la red de la universidad) no se bloquean entre sí.
  * En memoria y sin dependencias: suficiente para una sola instancia en Render gratuito.
  */
 @Injectable()
 export class LoginRateLimitGuard implements CanActivate {
   static readonly WINDOW_MS = 15 * 60 * 1000;
   static readonly MAX_ATTEMPTS = 10;
-  private static readonly hits = new Map<string, { count: number; resetAt: number }>();
+  private static readonly fails = new Map<string, { count: number; resetAt: number }>();
 
   static reset(ip?: string): void {
-    if (ip) LoginRateLimitGuard.hits.delete(ip);
-    else LoginRateLimitGuard.hits.clear();
+    if (ip) LoginRateLimitGuard.fails.delete(ip);
+    else LoginRateLimitGuard.fails.clear();
+  }
+
+  /** Registra un intento fallido para la IP. */
+  static registerFailure(ip: string): void {
+    const now = Date.now();
+    const fails = LoginRateLimitGuard.fails;
+    if (fails.size > 5000) {
+      for (const [key, value] of fails) if (value.resetAt <= now) fails.delete(key);
+    }
+    const entry = fails.get(ip);
+    if (!entry || entry.resetAt <= now) {
+      fails.set(ip, { count: 1, resetAt: now + LoginRateLimitGuard.WINDOW_MS });
+    } else {
+      entry.count += 1;
+    }
   }
 
   canActivate(context: ExecutionContext): boolean {
-    const now = Date.now();
-    const hits = LoginRateLimitGuard.hits;
-    if (hits.size > 5000) {
-      for (const [key, value] of hits) if (value.resetAt <= now) hits.delete(key);
-    }
     const ip = clientIp(context.switchToHttp().getRequest<IncomingMessage>());
-    const entry = hits.get(ip);
-    if (!entry || entry.resetAt <= now) {
-      hits.set(ip, { count: 1, resetAt: now + LoginRateLimitGuard.WINDOW_MS });
-      return true;
-    }
-    entry.count += 1;
-    if (entry.count > LoginRateLimitGuard.MAX_ATTEMPTS) {
+    const entry = LoginRateLimitGuard.fails.get(ip);
+    const now = Date.now();
+    if (entry && entry.resetAt > now && entry.count >= LoginRateLimitGuard.MAX_ATTEMPTS) {
       const minutes = Math.ceil((entry.resetAt - now) / 60000);
       throw AppError.tooManyRequests(
-        `Demasiados intentos de inicio de sesión. Intente de nuevo en ${minutes} minuto(s).`,
+        `Demasiados intentos fallidos de inicio de sesión. Intente de nuevo en ${minutes} minuto(s).`,
       );
     }
     return true;
