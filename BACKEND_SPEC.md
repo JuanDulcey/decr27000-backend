@@ -615,6 +615,41 @@ Todas las respuestas siguen el sobre JSON estándar:
 - **`POST /api/auditorias/:id/informes`** (Requiere Token)
   - Calcula el siguiente número de `version` (`MAX(version) + 1`), guarda una instantánea oficial en la tabla `informe` con el `snapshot_json` completo y retorna la versión consolidada lista para impresión/exportación PDF (`CP-10`).
 
+### 6.10. Implementación real (nov-2026): endpoints y reglas añadidos al contrato
+
+Todo lo anterior está implementado en NestJS 12 y probado (77 pruebas e2e + 14 unitarias). La implementación agrega, sin romper el contrato:
+
+**Endpoints adicionales**
+
+| Método y ruta | Uso |
+| :--- | :--- |
+| `GET /api/controles/:id` | Detalle de un control del catálogo. |
+| `GET /api/auditorias/:id/verificacion-cierre` | Checklist en vivo: `{ total_seleccionados, pendientes[], sin_evidencia[], total_hallazgos, hallazgos_sin_recomendacion[], puede_revisar, puede_cerrar }`. `GET /api/auditorias/:id` también lo incluye como `verificacion_cierre`. |
+| `PUT /api/recomendaciones/:id` | Editar descripción, prioridad, plazo o responsable. |
+| `GET /api/informes/:id_informe` | Versión congelada del informe con su `snapshot_json`. El historial (`versiones`) de `GET/POST /api/auditorias/:id/informes` no incluye el snapshot para aligerar la respuesta. |
+
+**Reglas de negocio adicionales**
+
+| Regla | Respuesta |
+| :--- | :--- |
+| Transiciones permitidas: `BORRADOR → EN_EJECUCION`, `EN_EJECUCION → EN_REVISION / BORRADOR`, `EN_REVISION → EN_EJECUCION / CERRADA`. Pedir el mismo estado o un salto no permitido. | `400` |
+| Los errores de RN02, RN04 y RN06 incluyen `details` con las listas (`pendientes`, `sin_evidencia`, `hallazgos_sin_recomendacion`). | `400` |
+| Selección: controles inexistentes en el catálogo. | `400` (`field: controles_ids`) |
+| Selección: retirar un control que ya tiene evidencias o hallazgos. | `409` |
+| Selección: modificarla con la auditoría `EN_REVISION` (primero se devuelve a `EN_EJECUCION`). | `409` |
+| Hallazgo sobre un control `PENDIENTE` o `NO_APLICABLE`. | `400` |
+| Código de evidencia repetido dentro de la auditoría. | `409` (`field: codigo_evidencia`) |
+| Con la auditoría `EN_REVISION`: borrar la única evidencia de un control `IMPLEMENTADO`/`PARCIAL` o la única recomendación de un hallazgo. | `409` |
+| Auditor inexistente al crear o editar una auditoría. | `400` (`field: id_auditor`) |
+| Editar `codigo_iso` o `categoria` de un control. | `400` |
+| Crear un control con un `codigo_iso` existente. | `409` |
+| `POST /api/auditorias/:id/informes` se permite también con la auditoría `CERRADA` (el informe es una instantánea, no modifica registros). | `201` |
+| `POST /api/seed/reset`: solo `admin`, solo con `ALLOW_SEED_RESET=true` y con `{ "confirm": "RESTAURAR-EMPRESA-ABC" }`. | `403` / `400` |
+| Login: 10 intentos **fallidos** por IP cada 15 min; los correctos no cuentan y limpian el contador. | `429` |
+| Identificadores de ruta no numéricos. | `400` |
+
+**Formato de datos**: fechas `DATE` como `"AAAA-MM-DD"`; porcentajes como número con un decimal (`33.3`); textos de fórmulas con coma decimal (`"(4 / 12) × 100 = 33,3 %"`). Los códigos `H-nn` y `EV-nn` se generan como máximo + 1 por auditoría, dentro de una transacción que bloquea la fila de la auditoría (`FOR UPDATE`).
+
 ---
 
 ## 7. Despliegue del Backend en Render (`render.yaml`, plan gratuito)

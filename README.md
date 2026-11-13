@@ -40,6 +40,22 @@ docker stop decr-test-pg
 ```
 Las pruebas ignoran el `.env`, restauran la semilla en la BD de Docker y se niegan a correr contra una BD remota.
 
+## Endpoints (prefijo `/api`, todos con JWT salvo los marcados como públicos)
+| Recurso | Endpoints |
+| :--- | :--- |
+| Salud | `GET /health` (público) · `GET /health?db=1` |
+| Sesión | `POST /auth/login` (público) · `GET /auth/me` · `GET /usuarios` |
+| Catálogo | `GET /controles?categoria=&q=` · `GET /controles/:id` · `POST /controles` y `PUT /controles/:id` (solo admin) |
+| Auditorías | `GET /auditorias` · `GET /auditorias/:id` · `POST /auditorias` · `PUT /auditorias/:id` · `PATCH /auditorias/:id/estado` · `GET /auditorias/:id/verificacion-cierre` · `PUT /auditorias/:id/seleccion-controles` |
+| Evaluación | `GET /auditorias/:id/evaluaciones` · `PUT /evaluaciones/:id` |
+| Evidencias | `POST /evaluaciones/:id/evidencias` · `DELETE /evidencias/:id` |
+| Hallazgos | `GET /auditorias/:id/hallazgos` · `POST /evaluaciones/:id/hallazgos` · `PUT` y `DELETE /hallazgos/:id` |
+| Recomendaciones | `POST /hallazgos/:id/recomendaciones` · `PUT` y `DELETE /recomendaciones/:id` |
+| Resultados | `GET /auditorias/:id/indicadores` · `GET /auditorias/:id/trazabilidad` · `GET` y `POST /auditorias/:id/informes` · `GET /informes/:id` · `GET /dashboard?id_auditoria=` |
+| Demo | `POST /seed/reset` (solo admin, `ALLOW_SEED_RESET=true`, `{ "confirm": "RESTAURAR-EMPRESA-ABC" }`) |
+
+Detalle de cuerpos, respuestas y reglas en [`BACKEND_SPEC.md`](BACKEND_SPEC.md) §5, §6 y §6.10, y en vivo en Swagger (`/api/docs`).
+
 ## Contrato de respuestas
 - Éxito: `{ "ok": true, "data": ..., "message"?: "..." }`
 - Error: `{ "ok": false, "error": "Mensaje en español", "field"?: "campo" }`
@@ -54,7 +70,16 @@ src/
 ├── config/env.ts           # validación de variables de entorno al arrancar
 ├── common/                 # AppError, decoradores (@Public, @Roles, @CurrentUser), guards, filtro, interceptor
 ├── database/               # DatabaseService (pool pg), InitDbService, scripts db:seed / db:security
-└── modules/                # health, auth, usuarios (y los módulos de los siguientes incrementos)
+└── modules/
+    ├── core/               # AuditLock (inmutabilidad CERRADA), indicadores RF07, verificación de cierre
+    ├── health/ · auth/ · usuarios/
+    ├── controles/          # catálogo de 93 controles (caché en memoria) — RF02
+    ├── auditorias/         # CRUD, ciclo de vida y selección 10–15 — RF01, RN02, RN04, RN06
+    ├── evaluaciones/       # evaluación de controles y evidencias EV-nn — RF03, RF04
+    ├── hallazgos/          # hallazgos H-nn y recomendaciones — RF05, RF06
+    ├── informes/           # indicadores, trazabilidad, informe de 8 secciones y versiones — RF07, RF08, RNF05
+    ├── dashboard/          # RF09
+    └── seed/               # POST /api/seed/reset (solo admin)
 sql/security.sql            # RLS + REVOKE para Supabase
 test/                       # pruebas e2e (Vitest + supertest)
 ```
@@ -90,4 +115,4 @@ Valores en [`render.yaml`](render.yaml). Si el servicio se creó desde el panel,
 - **Región**: Ohio (igual que Supabase). La región no se puede cambiar: si el servicio está en otra, hay que recrearlo.
 - **Variables**: `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET` (propio, nunca el del ejemplo), `JWT_EXPIRES_IN=8h`, `FRONTEND_URL`, `SWAGGER_ENABLED`, `DB_SSL_CA` (recomendada).
 
-Medido localmente con el build de producción: arranque en ~0,6 s y ~135 MB de RAM.
+Medido localmente con el build de producción y todos los módulos: arranque en ~0,6 s, ~134 MB de RAM en reposo y ~157 MB tras 300 informes seguidos; los endpoints responden en 3–12 ms contra una BD local.

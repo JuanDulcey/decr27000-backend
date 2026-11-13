@@ -221,7 +221,9 @@ flowchart LR
 **Objetivo**: dejar la base técnica completa y segura, más el primer tramo del flujo (paso 1 → paso 3 del stepper), desplegado y demostrable.
 
 #### Backend
-> **Avance (13-nov-2026, rama `feat/nest-backend-base`)**: B1.0, B1.1, B1.2, B1.3, B1.5 y B1.6 terminadas; B1.10 avanzada; B1.4 descartada por decisión del equipo. 30 pruebas del backend en verde (14 unitarias + 16 e2e) y 10 E2E del frontend en verde contra el backend local. Supabase fue restaurada con la semilla corregida (respaldo previo con `pg_dump`) y el login real funciona.
+> **Avance (13-nov-2026): el backend de los 3 incrementos está implementado** (B1.0–B1.10, B2.1–B2.6, B3.1–B3.4 y B3.6) en `main` local del backend. Pruebas: 14 unitarias + 77 e2e (CP-01 a CP-13 contra PostgreSQL en Docker), 10/10 E2E del frontend en modo `remote-strict` contra el backend real y un recorrido completo por la interfaz (36 llamadas a la API, 0 errores). Medido: arranque 0,6 s, ~134–157 MB de RAM, 3–12 ms por endpoint con BD local. Pendiente: B3.5 (índices y revisión final, ver abajo), B3.7 (opcional), B1.4 (descartada) y `DB_SSL_CA` (opcional para la demo).
+>
+> *Avance anterior (13-nov, base)*: B1.0, B1.1, B1.2, B1.3, B1.5 y B1.6; Supabase restaurada con la semilla corregida y login real funcionando.
 
 - [x] **B1.0 Actualizar documentación al nuevo stack**: `BACKEND_SPEC.md` (secciones 1, 2, 2.1, 2.2, 6.1 health y 7), `CLAUDE.md` y este plan pasan a NestJS 12 + NodeAdapter. El contrato de API (sección 6) se mantiene.
 - [x] **B1.1 Proyecto base NestJS 12 + NodeAdapter**
@@ -252,21 +254,21 @@ flowchart LR
   - `GET /api/auth/me` y `GET /api/usuarios` (sin `password_hash`).
   - `JwtAuthGuard` global (verifica el JWT sin ir a la BD) + `RolesGuard` con `@Roles('admin')` + `@CurrentUser()`. JWT con `sub`, `rol`, `nombre`, `correo` e `issuer`; expiración `8h`.
   - Si una contraseña sigue en texto plano, el login la rechaza y el log indica ejecutar `pnpm db:security`.
-- [ ] **B1.7 Auditorías** (RF01, RN01, CP-01, CP-02)
+- [x] **B1.7 Auditorías** (RF01, RN01, CP-01, CP-02)
   - `GET /api/auditorias` (con métricas resumidas), `GET /api/auditorias/:id`, `POST`, `PUT`.
   - DTOs con `class-validator`: obligatorios, longitudes (`organizacion` ≤ 120), `@IsDateString()` y un validador propio para `fecha_fin >= fecha_inicio` con `field: "fecha_fin"`.
   - Toda auditoría nueva nace en `BORRADOR`; `referentes` usa por defecto `ISO 19011:2026; ISO/IEC 27001:2022; ISO/IEC 27002:2022`.
   - `AuditLockGuard`: resuelve la auditoría a partir de `:id`, `:id_evaluacion`, `:id_evidencia`, `:id_hallazgo` o `:id_recomendacion` y responde `403` ante cualquier mutación sobre una auditoría `CERRADA` (se reutiliza en I2).
-- [ ] **B1.8 Máquina de estados** (`modules/auditorias/auditoria-estado.service.ts`)
+- [x] **B1.8 Máquina de estados** (`modules/auditorias/auditoria-estado.service.ts`)
   - Transiciones permitidas: `BORRADOR → EN_EJECUCION → EN_REVISION → CERRADA`, más retroceso `EN_REVISION → EN_EJECUCION`. `CERRADA` es definitivo.
   - En I1 se implementa la regla RN02 (10–15 controles para pasar a `EN_EJECUCION`). Las reglas RN04 y RN06 se agregan en I2 sobre la misma función.
   - `PATCH /api/auditorias/:id/estado`.
-- [ ] **B1.9 Catálogo y selección** (RF02, RN02, CP-03, CP-13)
+- [x] **B1.9 Catálogo y selección** (RF02, RN02, CP-03, CP-13)
   - `GET /api/controles?categoria=&q=`: búsqueda insensible a mayúsculas y acentos (`unaccent` si está disponible; si no, normalizar en JS). Orden numérico por código.
   - `POST /api/controles` y `PUT /api/controles/:id` solo para `admin`; para `auditor`, `403` con el mensaje oficial.
   - `PUT /api/auditorias/:id/seleccion-controles`: valida 10–15 IDs únicos y existentes; sincroniza en una transacción (borra los quitados, inserta los nuevos en `PENDIENTE`, conserva los existentes); pasa `BORRADOR → EN_EJECUCION`. Si un control que se quita ya tiene evidencias o hallazgos, responde `409` explicando por qué (protege la trazabilidad).
   - `GET /api/auditorias/:id/evaluaciones` (versión base: lista con estado; I2 agrega evidencias y hallazgos anidados).
-- [ ] **B1.10 Pruebas y documentación**
+- [x] **B1.10 Pruebas y documentación**
   - [x] `test/helpers/app.ts`: restaura la semilla en la BD de Docker (se niega a tocar una BD remota), levanta la app con `NodeAdapter` y genera tokens de auditor y admin.
   - [x] 16 pruebas e2e de plataforma (health, 404, 401, login correcto/incorrecto/validaciones, 429 por intentos, `/me`, `/usuarios`, CORS) y 14 unitarias (entorno y lista blanca de CORS).
   - [x] `README.md` con requisitos, `.env`, scripts pnpm, Docker, Swagger y despliegue en Render.
@@ -325,23 +327,23 @@ flowchart LR
 **Objetivo**: completar el corazón del proceso auditor (pasos 4 y 5 del stepper) con trazabilidad de punta a punta y el ciclo de vida completo hasta `CERRADA`.
 
 #### Backend
-- [ ] **B2.1 Evaluaciones** (RF03, RN03, CP-04, CP-05)
+- [x] **B2.1 Evaluaciones** (RF03, RN03, CP-04, CP-05)
   - `GET /api/auditorias/:id/evaluaciones` completo: datos del control, evidencias, hallazgos con recomendaciones y `requiere_evidencia_faltante`, todo en pocas consultas (sin N+1).
   - `PUT /api/evaluaciones/:id`: observación obligatoria; justificación obligatoria si `NO_APLICABLE` (`@ValidateIf`); limpiar `justificacion_na` al cambiar de estado; actualizar `actualizado_en`. Protegido con `AuditLockGuard`.
-- [ ] **B2.2 Evidencias** (RF04, CP-06)
+- [x] **B2.2 Evidencias** (RF04, CP-06)
   - `POST /api/evaluaciones/:id/evidencias`: DTO (descripción, fuente, fecha no futura, referencia opcional, `es_simulada` por defecto `true`); `EV-nn` = máximo + 1 por auditoría, dentro de la transacción.
   - `DELETE /api/evidencias/:id`. Los dos con `AuditLockGuard`.
-- [ ] **B2.3 Hallazgos y recomendaciones** (RF05, RF06, RN05, CP-07)
+- [x] **B2.3 Hallazgos y recomendaciones** (RF05, RF06, RN05, CP-07)
   - `GET /api/auditorias/:id/hallazgos` con control asociado y recomendaciones.
   - `POST /api/evaluaciones/:id/hallazgos` con la recomendación inicial opcional en la **misma transacción**; `H-nn` = máximo + 1 por auditoría; reintento ante colisión.
   - `PUT` y `DELETE /api/hallazgos/:id`; `POST /api/hallazgos/:id/recomendaciones`; `PUT` y `DELETE /api/recomendaciones/:id` (el `PUT` de recomendaciones es nuevo frente a la especificación).
   - Regla: no se puede eliminar la última recomendación de un hallazgo si la auditoría está `EN_REVISION` (evita romper RN06 justo antes del cierre).
-- [ ] **B2.4 Reglas de transición completas** (RN04, RN06, CP-06, CP-08)
+- [x] **B2.4 Reglas de transición completas** (RN04, RN06, CP-06, CP-08)
   - `→ EN_REVISION`: sin `PENDIENTE` y todo `IMPLEMENTADO`/`PARCIAL` con evidencia. Si falla, responde con la lista de `codigo_iso` que incumplen.
   - `→ CERRADA`: lo anterior, más 3 hallazgos como mínimo y cada uno con al menos una recomendación. El error indica qué falta exactamente.
   - Endpoint de apoyo `GET /api/auditorias/:id/verificacion-cierre`, que devuelve el checklist (`{ pendientes, sin_evidencia, total_hallazgos, hallazgos_sin_recomendacion, puede_revisar, puede_cerrar }`) para que el frontend lo muestre en vivo.
-- [ ] **B2.5 Trazabilidad** (RNF05): `GET /api/auditorias/:id/trazabilidad` con la consulta oficial.
-- [ ] **B2.6 Pruebas**: CP-04, CP-05, CP-06, CP-07, CP-08 (con 2 hallazgos, y con un hallazgo sin recomendación), CP-13 (cualquier mutación sobre una auditoría `CERRADA` → 403), consecutivos `H-nn`/`EV-nn` después de borrar.
+- [x] **B2.5 Trazabilidad** (RNF05): `GET /api/auditorias/:id/trazabilidad` con la consulta oficial.
+- [x] **B2.6 Pruebas**: CP-04, CP-05, CP-06, CP-07, CP-08 (con 2 hallazgos, y con un hallazgo sin recomendación), CP-13 (cualquier mutación sobre una auditoría `CERRADA` → 403), consecutivos `H-nn`/`EV-nn` después de borrar.
 
 #### Frontend
 - [ ] **F2.1 Evaluación** (`evaluacion.html`, CP-04, CP-05, CP-06)
@@ -377,21 +379,21 @@ flowchart LR
 **Objetivo**: generar los resultados desde la BD, cerrar la calidad (pruebas, seguridad, móvil) y dejar listos los entregables y la demo.
 
 #### Backend
-- [ ] **B3.1 Indicadores** (RF07, CP-09): `GET /api/auditorias/:id/indicadores` con la consulta oficial, más las fórmulas como texto (`"(4 / 12) × 100"`) para que el informe las muestre sin recalcular.
-- [ ] **B3.2 Dashboard** (RF09, CP-11): `GET /api/dashboard?id_auditoria=` con una consulta agregada; los números deben coincidir exactamente con los del informe. Agregar `auditorias_recientes`.
-- [ ] **B3.3 Informes** (RF08, CP-10)
+- [x] **B3.1 Indicadores** (RF07, CP-09): `GET /api/auditorias/:id/indicadores` con la consulta oficial, más las fórmulas como texto (`"(4 / 12) × 100"`) para que el informe las muestre sin recalcular.
+- [x] **B3.2 Dashboard** (RF09, CP-11): `GET /api/dashboard?id_auditoria=` con una consulta agregada; los números deben coincidir exactamente con los del informe. Agregar `auditorias_recientes`.
+- [x] **B3.3 Informes** (RF08, CP-10)
   - `GET /api/auditorias/:id/informes`: las 8 secciones en vivo más el historial de versiones.
   - `POST /api/auditorias/:id/informes`: `version = MAX + 1` en transacción; guarda `snapshot_json` completo y el resumen ejecutivo generado.
   - `GET /api/informes/:id_informe`: devuelve una versión congelada (para reabrir un informe histórico tal como se generó).
   - Texto de limitaciones obligatorio (no constituye certificación ISO/IEC 27001).
-- [ ] **B3.4 Restauración de la demo**: `POST /api/seed/reset` solo para `admin`, solo si `ALLOW_SEED_RESET=true` y con el cuerpo `{ "confirm": "RESTAURAR-EMPRESA-ABC" }` (P6). Después vuelve a aplicar `security.sql`.
-- [ ] **B3.5 Endurecimiento**
+- [x] **B3.4 Restauración de la demo**: `POST /api/seed/reset` solo para `admin`, solo si `ALLOW_SEED_RESET=true` y con el cuerpo `{ "confirm": "RESTAURAR-EMPRESA-ABC" }` (P6). Después vuelve a aplicar `security.sql`.
+- [ ] **B3.5 Endurecimiento** — *hecho*: guards en todas las mutaciones (JWT global, roles, `AuditLockService` con `FOR UPDATE`), DTOs validados, apagado limpio, `statement_timeout` 10 s, Swagger con `@ApiTags`/`@ApiBearerAuth`, límite de intentos solo para logins fallidos. *Pendiente*: índices (impacto nulo con el volumen académico) y `pnpm audit`.
   - Revisar que **todas** las rutas de mutación tengan `JwtAuthGuard`, `AuditLockGuard` y un DTO validado (una prueba e2e recorre las rutas registradas y lo comprueba).
   - Índices: `evaluacion_control(id_auditoria)`, `evidencia(id_evaluacion)`, `hallazgo(id_evaluacion)`, `recomendacion(id_hallazgo)`, `informe(id_auditoria)`.
   - Apagado limpio (`enableShutdownHooks` cierra el pool) y límite de tiempo por consulta (`statement_timeout` de 10 s).
   - Swagger completo (`@ApiTags`, `@ApiBearerAuth`, ejemplos de cuerpos) y desactivable con `SWAGGER_ENABLED=false`.
   - `pnpm audit` sin vulnerabilidades altas.
-- [ ] **B3.6 Pruebas**: CP-09 (33,3 / 54,2), CP-10 (el informe coincide con la BD y marca las evidencias simuladas), CP-11 (dashboard = informe), regresión de CP-01 a CP-13. Meta de cobertura de servicios ≥ 80 % (`pnpm test:cov`).
+- [x] **B3.6 Pruebas** (77 e2e en verde; la medición de cobertura queda pendiente): CP-09 (33,3 / 54,2), CP-10 (el informe coincide con la BD y marca las evidencias simuladas), CP-11 (dashboard = informe), regresión de CP-01 a CP-13. Meta de cobertura de servicios ≥ 80 % (`pnpm test:cov`).
 - [ ] **B3.7 (Opcional si sobra tiempo)** Historial de cambios de estado (`auditoria_estado_log`) y columna `metodo_obtencion` en `evidencia` (presencial, remoto o híbrido, alineada con ISO 19011:2026; ver BACKEND_SPEC §8.7) (P12, P8).
 
 #### Frontend
