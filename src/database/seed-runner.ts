@@ -31,18 +31,22 @@ export async function applySecurity(client: pg.ClientBase): Promise<void> {
 
 /**
  * Carga la semilla completa (DROP + CREATE + datos de Empresa ABC), hashea las
- * contraseñas y aplica la seguridad, todo en una transacción.
- * ¡Borra todos los datos existentes!
+ * contraseñas y, salvo que se indique lo contrario, aplica la seguridad
+ * (RLS + REVOKE), todo en una transacción. ¡Borra todos los datos existentes!
  */
-export async function runFullSeed(client: pg.ClientBase): Promise<{ hashed: number }> {
+export async function runFullSeed(
+  client: pg.ClientBase,
+  options: { security?: boolean } = {},
+): Promise<{ hashed: number; security: boolean }> {
+  const security = options.security ?? true;
   const sql = await readFile(SEED_FILE, 'utf8');
   await client.query('BEGIN');
   try {
     await client.query(sql);
     const hashed = await hashPlainPasswords(client);
-    await applySecurity(client);
+    if (security) await applySecurity(client);
     await client.query('COMMIT');
-    return { hashed };
+    return { hashed, security };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw err;

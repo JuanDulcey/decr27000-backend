@@ -26,8 +26,8 @@ export class InitDbService implements OnApplicationBootstrap {
       this.logger.warn('Base de datos vacía: cargando la semilla oficial (93 controles + Empresa ABC)...');
       const client = await this.db.pool.connect();
       try {
-        const { hashed } = await runFullSeed(client);
-        this.logger.log(`Semilla cargada; ${hashed} contraseñas hasheadas y RLS aplicado.`);
+        const { hashed } = await runFullSeed(client, { security: false });
+        this.logger.log(`Semilla cargada; ${hashed} contraseñas hasheadas (RLS: aplicar con pnpm db:security).`);
       } finally {
         client.release();
       }
