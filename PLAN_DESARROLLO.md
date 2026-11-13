@@ -2,7 +2,7 @@
 
 > Plan único para **backend** (`decr27000-backend`) y **frontend** (`decr27000-frontend`), dividido en **3 incrementos** entregables y desplegados. Al final de cada uno se recoge feedback.
 > Especificaciones de referencia: `BACKEND_SPEC.md` y `FRONTEND_SPEC.md` (la fuente de verdad es la copia dentro de cada repo). Reglas de trabajo: `CLAUDE.md`.
-> Fecha de corte del diagnóstico: 11 de noviembre de 2026.
+> Fecha de corte del diagnóstico: 11 de noviembre de 2026 (frontend y entorno revisados de nuevo el 13 de noviembre).
 > **Stack decidido**: backend NestJS + Fastify + `pg` (pnpm) · frontend HTML + Tailwind CDN + CSS, sin build · 4 integrantes. Las decisiones están en la sección 6 y el reparto de trabajo en la sección 2.5.
 > Este archivo se mantiene igual en los dos repositorios (`PLAN_DESARROLLO.md` en la raíz de cada uno).
 
@@ -13,7 +13,7 @@
 | Pieza | Estado actual | Implicación |
 | :--- | :--- | :--- |
 | Backend en Render (`https://decr27000-backend.onrender.com`) | En línea. Solo `index.js` con `http` nativo: responde `GET /api/health` y `/`. `package.json` sin dependencias. | Hay que construir toda la API. El pipeline de despliegue ya funciona (pnpm). |
-| Frontend en Vercel (`https://decr27000-frontend.vercel.app`) | En línea (HTTP 200). Solo `index.html`, una página que prueba la conexión con el health check. | Hay que construir las 7 vistas. El despliegue estático ya funciona. |
+| Frontend en Vercel (`https://decr27000-frontend.vercel.app`) | **Actualizado el 13-nov**: las 8 páginas ya están construidas (login, dashboard, auditoría, catálogo, evaluación, hallazgos, informe y 404), con Playwright E2E. Mientras el backend no tenga los endpoints, **funciona con un motor local en `localStorage`** (ver 2.7). | El trabajo pendiente está sobre todo en el backend; el frontend se va conectando al backend real (tareas F-INT). |
 | Base de datos Supabase (PostgreSQL 17, Session Pooler) | Existen las 8 tablas (`usuario`, `control`, `auditoria`, `evaluacion_control`, `evidencia`, `hallazgo`, `recomendacion`, `informe`). **No se verificó el contenido.** | Se desconoce si tiene la semilla corregida (ISO 19011:2026 y nombres de controles) y si las contraseñas están hasheadas. Se resuelve en la tarea `B1.3`. |
 | Semilla `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` | Corregida y probada en PostgreSQL 16: 93 controles (37/8/14/34), Empresa ABC con 13 controles, CP-09 da 33,3 % y 54,2 %. | Lista para usar. |
 | Especificaciones | Completas: modelo de datos, reglas RN01–RN07, contrato de API, 7 pantallas, CP-01 a CP-13. | Este plan las ordena en el tiempo y añade lo necesario para producción. |
@@ -60,7 +60,7 @@ Además de cumplir los criterios de aceptación del curso (sección 17 del docum
 - **Documentación de la API**: `@nestjs/swagger` en `/api/docs`. Es la documentación viva del contrato, sirve para probar endpoints en la sustentación y se apaga en producción con una variable si se quiere.
 - **Pruebas**: **Jest + supertest** (lo que trae el CLI de Nest, así que no hay que configurar nada): unitarias en los servicios y e2e (`test/*.e2e-spec.ts`) contra PostgreSQL 16 en Docker (P9).
 - **Calidad**: ESLint + Prettier (vienen con el CLI); `pnpm lint`, `pnpm test`, `pnpm test:e2e`.
-- **Build y despliegue en Render**: `buildCommand: pnpm install --frozen-lockfile && pnpm build` · `startCommand: pnpm start:prod` (`node dist/main`). Fastify debe escuchar en `0.0.0.0` y en `process.env.PORT`.
+- **Build y despliegue en Render (plan gratuito)**: `buildCommand: pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod` · `startCommand: node --max-old-space-size=384 dist/main.js` (se arranca con `node` directo, sin pasar por `pnpm`, para ahorrar memoria y tiempo de arranque). Fastify debe escuchar en `0.0.0.0` y en `process.env.PORT`. Todas las optimizaciones están en la sección 2.6.
 
 #### Estructura final del backend (reemplaza la sección 2 de `BACKEND_SPEC.md`)
 ```text
@@ -138,7 +138,7 @@ decr27000-frontend/
 
 | Entorno | Backend | Base de datos | Frontend |
 | :--- | :--- | :--- | :--- |
-| Local | `pnpm start:dev` (Nest en modo watch, puerto 4000) | PostgreSQL 16 en Docker | servidor estático local → `http://localhost:4000/api` |
+| Local | `pnpm start:dev` (Nest en modo watch, puerto 4000) | **Supabase** (el mismo proyecto; `.env` local del backend, ignorado por git). Docker es opcional para trabajar sin conexión. | servidor estático local → `http://localhost:4000/api` |
 | Pruebas automáticas | Jest + supertest (`pnpm test`, `pnpm test:e2e`) | PostgreSQL 16 en Docker (BD desechable) | Playwright contra local |
 | Producción / demo | Render | Supabase | Vercel |
 
@@ -168,6 +168,42 @@ Reglas del reparto:
 - **Contrato primero**: antes de construir una pantalla, el par backend–frontend del bloque acuerda el endpoint con Swagger (`/api/docs`) y lo prueba con datos de Empresa ABC.
 - **Día 1**: Integrante 1 deja listo el módulo de referencia (`controles` + guard + DTO + prueba e2e) e Integrante 3 la plantilla HTML con `styles.css`. Los demás copian esos patrones.
 - **Sustentación**: cada integrante demuestra su bloque y responde por el flujo completo (Pasos 1–8 de FRONTEND_SPEC §7.3).
+
+### 2.6. Optimización para Render gratuito + Supabase
+
+Render gratuito ofrece **512 MB de RAM y 0,1 de CPU**, **suspende el servicio tras 15 min sin tráfico** y la primera petición tarda entre 30 y 60 s. Supabase está en `us-east-2` (Ohio). Cada punto apunta a gastar menos memoria y CPU, arrancar más rápido y hacer menos viajes a la base:
+
+| # | Optimización | Cómo | Ganancia |
+| :---: | :--- | :--- | :--- |
+| O1 | **Misma región** para Render y Supabase | En Render, servicio en **Ohio** (`region: ohio`). Si hoy está en otra región, recrearlo en Ohio (la región no se puede cambiar después de creado). | Cada consulta pasa de ~40–70 ms a ~1–5 ms de red. Es la mejora más grande. |
+| O2 | **Fastify + `pg` directo** | Ya decidido (2.1). Sin ORM, sin Express. | Menos memoria y CPU por petición; arranque más rápido. |
+| O3 | **Arrancar con `node`, no con `pnpm`** | `startCommand: node --max-old-space-size=384 dist/main.js`. | Se ahorra el proceso extra de pnpm (~40–60 MB) y el heap queda por debajo de 512 MB. |
+| O4 | **Solo dependencias de producción** | `pnpm prune --prod` al final del build. Compilar con `nest build` (tsc), sin webpack. | Menos memoria y un arranque en frío más corto. |
+| O5 | **Pool pequeño y persistente** | `max: 4`, `keepAlive: true`, `idleTimeoutMillis: 30000`, conexión por el **Session Pooler** (puerto 5432). Crear el pool una vez al arrancar y reutilizarlo. | Evita agotar las conexiones del plan gratuito de Supabase y repetir el handshake TLS (~1 s medido desde local). |
+| O6 | **Caché en memoria del catálogo** | Los 93 controles se leen una vez y se guardan en memoria; se invalidan cuando el admin edita uno. `GET /api/controles` responde con `ETag` y `Cache-Control: private, max-age=300`. | El endpoint más pesado (~66 KB) deja de ir a la BD en cada carga. |
+| O7 | **Una consulta por pantalla** | Dashboard e indicadores con una sola consulta agregada; evaluaciones con evidencias y hallazgos en 3 consultas en total (sin N+1); `json_agg` cuando convenga. | Menos viajes a la BD, que son lo más caro. |
+| O8 | **Arranque liviano** | Al iniciar solo se verifica `SELECT COUNT(*) FROM control`; la semilla nunca corre en cada arranque. Swagger se registra solo si `SWAGGER_ENABLED=true`. Logger de Fastify en nivel `warn` en producción. | El servicio despierta más rápido tras la suspensión. |
+| O9 | **Health check barato** | `GET /api/health` responde sin tocar la BD; `GET /api/health?db=1` hace el `SELECT 1`. Render usa el primero. | Render no gasta conexiones a la BD en sus chequeos. |
+| O10 | **Evitar la suspensión** (opcional) | Un monitor externo gratuito (UptimeRobot o cron-job.org) llama a `/api/health` cada 10 min en horario de trabajo y el día de la sustentación. Un solo servicio 24/7 consume ~744 h de las 750 h gratuitas del mes. | Sin arranques en frío durante la demo. |
+| O11 | **Respuestas pequeñas** | Solo los campos que usa la pantalla; sin `SELECT *` en listados; `bodyLimit` de 100 KB. | Menos CPU de serialización y menos ancho de banda. |
+| O12 | **Apagado limpio** | `enableShutdownHooks()` cierra el pool cuando Render suspende o redespliega. | No quedan conexiones colgadas en Supabase. |
+
+> Las pruebas automáticas (Jest + supertest) siguen corriendo contra PostgreSQL en Docker, **nunca contra Supabase**, porque producción, demo y desarrollo local comparten la misma base.
+
+### 2.7. Modo local del frontend (`js/seed-data.js`) y conexión con el backend real
+
+**Estado verificado (13-nov-2026)**: el frontend ya está construido, pero **todo lo que muestra sale de `localStorage`** (`auditsys_local_db_v1`), no de Supabase. `js/api.js` cae a un motor local (`js/seed-data.js`) en tres casos:
+1. si el modo es `local`;
+2. si el backend responde `404` con `"Ruta no encontrada"`, que es lo que devuelve hoy el `index.js` provisional para todo menos `/api/health`;
+3. si hay un error de red y el modo no es `remote-strict`.
+
+En ese modo el login acepta la clave fija `Audit2026*`, devuelve un token falso (`demo-jwt-token-…`) y guarda auditorías, evidencias y hallazgos en el navegador de cada persona.
+
+Tareas de integración (se van cerrando a medida que el backend Nest publica endpoints):
+- [ ] **F-INT.1** Cuando un endpoint exista en el backend, comprobarlo con el modo `remote-strict` (selector en `login.html`) para que no caiga al motor local.
+- [ ] **F-INT.2** Al terminar el I2, quitar la caída automática por errores de red (caso 3): un error de red debe mostrarse como error, no guardar datos en `localStorage` en silencio, porque si no, los datos de la auditoría se dividen entre Supabase y el navegador.
+- [ ] **F-INT.3** Antes de la sustentación, dejar `remote-strict` como modo por defecto y conservar el modo `local` solo como opción manual de respaldo (documentada) si Render o Supabase fallan.
+- [ ] **F-INT.4** Cambiar en `package.json` los scripts `npx serve` por `serve . -l 3000` (el paquete ya está en `devDependencies`), según la regla "solo pnpm".
 
 ---
 
@@ -202,13 +238,13 @@ flowchart LR
   - `pnpm add -D @types/pg @types/bcryptjs @types/passport-jwt` (Jest y supertest ya vienen con el CLI).
   - `main.ts`: `NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: true }))`, `setGlobalPrefix('api')`, helmet, CORS, `ValidationPipe` global, `AllExceptionsFilter`, `ResponseInterceptor`, Swagger en `/api/docs`, `listen(PORT, '0.0.0.0')`, `enableShutdownHooks()`.
   - `"engines": { "node": ">=22" }`; scripts `build`, `start:dev`, `start:prod`, `lint`, `test`, `test:e2e`, `db:seed`, `db:security`.
-  - `render.yaml`: `buildCommand: pnpm install --frozen-lockfile && pnpm build`, `startCommand: pnpm start:prod`, `healthCheckPath: /api/health`.
+  - `render.yaml`: `plan: free`, `region: ohio` (igual que Supabase `us-east-2`), `buildCommand: pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod`, `startCommand: node --max-old-space-size=384 dist/main.js`, `healthCheckPath: /api/health` (ver 2.6).
 - [ ] **B1.2 Configuración y entorno** (`config/env.validation.ts` con `@nestjs/config`)
   - Validar todas las variables al arrancar (`DATABASE_URL`, `JWT_SECRET` de 32 caracteres o más, `JWT_EXPIRES_IN`, `CORS_ORIGINS`, `NODE_ENV`, `ALLOW_SEED_RESET`, `SWAGGER_ENABLED`). Si falta alguna, la app no arranca y lo dice claramente.
   - En producción, rechazar el arranque si `JWT_SECRET` es igual al de `.env.example`.
   - Actualizar `.env.example` con las variables nuevas (solo marcadores).
 - [ ] **B1.3 Base de datos y semilla** (`database/`)
-  - `DatabaseService` global: `Pool` con SSL para Supabase, `max: 5`, `idleTimeoutMillis: 30000`, métodos `query<T>()` y `withTransaction(fn)`. Cierra el pool en `onModuleDestroy`.
+  - `DatabaseService` global: `Pool` con SSL para Supabase (Session Pooler), `max: 4`, `idleTimeoutMillis: 30000`, `connectionTimeoutMillis: 10000`, `keepAlive: true`, métodos `query<T>()` y `withTransaction(fn)`. Cierra el pool en `onModuleDestroy`. Ver 2.6.
   - `InitDbService` + script `pnpm db:seed` (`node dist/database/seed.js`): ejecuta la semilla y hashea con bcrypt (coste 10) toda contraseña que no empiece por `$2`.
   - Al arrancar: si `control` no existe o tiene menos de 93 filas, inicializa la BD. **Nunca** reinicia una BD que ya tiene datos.
   - **Verificación en Supabase** (una sola vez, con aprobación del equipo): contar controles, revisar `referentes` y el nombre del control 7.7, y comprobar que `password_hash` empiece por `$2`. Si tiene la semilla anterior, volver a sembrar con la corregida.
@@ -220,7 +256,7 @@ flowchart LR
   - `@fastify/helmet`; CORS con lista blanca (`FRONTEND_URL`, `https://*.vercel.app` del proyecto, `http://localhost:*`); `bodyLimit` de Fastify en 100 KB; logger pino de Fastify con id por petición.
   - `AllExceptionsFilter`: traduce `HttpException`, errores del `ValidationPipe` y errores de PostgreSQL (`23505` → 409, `23503` → 409, `23514` → 400) al sobre `{ ok:false, error, field? }`. Nunca expone la traza en producción. Las rutas inexistentes también responden 404 con ese formato.
   - `ResponseInterceptor`: envuelve las respuestas en `{ ok:true, data, message? }`.
-  - `HealthModule`: `GET /api/health` → `{ ok, status, service, db: "UP|DOWN", timestamp }` (con `SELECT 1`), marcado como `@Public()`.
+  - `HealthModule` (`@Public()`): `GET /api/health` → `{ ok, status, service, timestamp }` sin tocar la BD (es el que usa Render); `GET /api/health?db=1` agrega `db: "UP|DOWN"` con un `SELECT 1` (ver O9 en 2.6).
 - [ ] **B1.6 Autenticación y roles** (RNF04, `modules/auth`, `modules/usuarios`)
   - `POST /api/auth/login` (`@Public()`) con `@Throttle` de 10 intentos cada 15 min por IP y mensaje genérico ("Credenciales inválidas").
   - `GET /api/auth/me` y `GET /api/usuarios` (sin `password_hash`).
