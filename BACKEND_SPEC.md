@@ -84,6 +84,12 @@ El límite de intentos de login es propio y en memoria (`LoginRateLimitGuard`, 1
 | `CORS_ORIGINS` | No | — | Orígenes extra separados por comas (`*` se ignora). |
 | `SWAGGER_ENABLED` | No | `true` en desarrollo, `false` en producción | Documentación en `/api/docs`. |
 | `ALLOW_SEED_RESET` | No | `false` | Habilita `POST /api/seed/reset` (solo admin; Incremento 3). |
+| `ENPOINT_URL` (o `ENDPOINT_URL`) | No | — | Endpoint S3 del bucket de Railway (`https://t3.storageapi.dev`). |
+| `BUCKET_NAME` | No | — | Nombre S3 del bucket (variable `BUCKET` de Railway). |
+| `ACCESS_KEY_BUCKET` | No | — | Access key del bucket. |
+| `SECRET_KEY_BUCKET` | No | — | Secret key del bucket. Si falta cualquiera de las 4, la carga de archivos se desactiva (503) y el backend arranca igual. |
+| `BUCKET_REGION` / `BUCKET_URL_STYLE` | No | `auto` / `virtual` | Región y estilo de URL S3 (`path` para buckets antiguos). |
+| `EVIDENCIA_MAX_MB` | No | `5` (máx. 20) | Tamaño máximo por archivo de evidencia. |
 
 > **CORS (lista blanca, decisión P10)**: se permiten `FRONTEND_URL`, los previews de Vercel del proyecto (`https://decr27000-frontend-*.vercel.app`), `http://localhost:*` / `http://127.0.0.1:*` y los orígenes de `CORS_ORIGINS`. Métodos `GET, POST, PUT, PATCH, DELETE, OPTIONS`; cabeceras `Content-Type, Authorization`.
 
@@ -165,6 +171,10 @@ CREATE TABLE evidencia (
   fecha_evidencia  DATE NOT NULL DEFAULT CURRENT_DATE,
   referencia_url   TEXT,
   es_simulada      BOOLEAN NOT NULL DEFAULT TRUE,
+  archivo_key      TEXT,                 -- clave del archivo en el bucket S3 (opcional, nunca se expone)
+  archivo_nombre   VARCHAR(255),         -- nombre original del archivo
+  archivo_tipo     VARCHAR(120),         -- tipo MIME asignado por el servidor
+  archivo_tamano   INTEGER CHECK (archivo_tamano IS NULL OR archivo_tamano >= 0),
   creado_en        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -617,7 +627,7 @@ Todas las respuestas siguen el sobre JSON estándar:
 
 ### 6.10. Implementación real (nov-2026): endpoints y reglas añadidos al contrato
 
-Todo lo anterior está implementado en NestJS 12 y probado (77 pruebas e2e + 14 unitarias). La implementación agrega, sin romper el contrato:
+Todo lo anterior está implementado en NestJS 12 y probado (89 pruebas e2e + 22 unitarias, incluido un S3 falso para los archivos, y verificado contra el bucket real de Railway). La implementación agrega, sin romper el contrato:
 
 **Endpoints adicionales**
 
@@ -627,6 +637,10 @@ Todo lo anterior está implementado en NestJS 12 y probado (77 pruebas e2e + 14 
 | `GET /api/auditorias/:id/verificacion-cierre` | Checklist en vivo: `{ total_seleccionados, pendientes[], sin_evidencia[], total_hallazgos, hallazgos_sin_recomendacion[], puede_revisar, puede_cerrar }`. `GET /api/auditorias/:id` también lo incluye como `verificacion_cierre`. |
 | `PUT /api/recomendaciones/:id` | Editar descripción, prioridad, plazo o responsable. |
 | `GET /api/informes/:id_informe` | Versión congelada del informe con su `snapshot_json`. El historial (`versiones`) de `GET/POST /api/auditorias/:id/informes` no incluye el snapshot para aligerar la respuesta. |
+| `POST /api/evidencias/:id/archivo` | Adjunta o reemplaza el archivo de la evidencia en el bucket S3 (`multipart/form-data`, campo `archivo`, máx. `EVIDENCIA_MAX_MB`). Responde la evidencia con `tiene_archivo`, `archivo_nombre`, `archivo_tipo`, `archivo_tamano`. `403` si la auditoría está `CERRADA`; `503` si el bucket no está configurado. |
+| `GET /api/evidencias/:id/archivo` | `{ url, expira_en_segundos, archivo_nombre, archivo_tipo, archivo_tamano }`: enlace prefirmado de 5 min que descarga directo desde el bucket (permitido también con la auditoría `CERRADA`). `404` si no hay archivo. |
+| `DELETE /api/evidencias/:id/archivo` | Quita el archivo y conserva la evidencia. Borrar la evidencia también borra su archivo. |
+| `POST /api/usuarios`, `PUT /api/usuarios/:id`, `PATCH /api/usuarios/:id/password`, `DELETE /api/usuarios/:id` | Administración de usuarios (solo `admin`). |
 
 **Reglas de negocio adicionales**
 
@@ -646,6 +660,9 @@ Todo lo anterior está implementado en NestJS 12 y probado (77 pruebas e2e + 14 
 | `POST /api/auditorias/:id/informes` se permite también con la auditoría `CERRADA` (el informe es una instantánea, no modifica registros). | `201` |
 | `POST /api/seed/reset`: solo `admin`, solo con `ALLOW_SEED_RESET=true` y con `{ "confirm": "RESTAURAR-EMPRESA-ABC" }`. | `403` / `400` |
 | Login: 10 intentos **fallidos** por IP cada 15 min; los correctos no cuentan y limpian el contador. | `429` |
+| Archivo de evidencia: solo tipos de la lista blanca (PDF, imágenes, Office/ODF, CSV, TXT, LOG, CONF, JSON, ZIP); el tipo MIME lo asigna el servidor por extensión. | `400` (`field: archivo`) |
+| Archivo de evidencia mayor que `EVIDENCIA_MAX_MB`. | `413` |
+| Archivo enviado en un campo distinto de `archivo`, o más de un archivo. | `400` |
 | Identificadores de ruta no numéricos. | `400` |
 
 **Formato de datos**: fechas `DATE` como `"AAAA-MM-DD"`; porcentajes como número con un decimal (`33.3`); textos de fórmulas con coma decimal (`"(4 / 12) × 100 = 33,3 %"`). Los códigos `H-nn` y `EV-nn` se generan como máximo + 1 por auditoría, dentro de una transacción que bloquea la fila de la auditoría (`FOR UPDATE`).

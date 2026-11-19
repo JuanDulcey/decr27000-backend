@@ -44,11 +44,12 @@ Las pruebas ignoran el `.env`, restauran la semilla en la BD de Docker y se nieg
 | Recurso | Endpoints |
 | :--- | :--- |
 | Salud | `GET /health` (público) · `GET /health?db=1` |
-| Sesión | `POST /auth/login` (público) · `GET /auth/me` · `GET /usuarios` |
+| Sesión y usuarios | `POST /auth/login` (público) · `GET /auth/me` · `GET /usuarios` · `POST /usuarios`, `PUT /usuarios/:id`, `PATCH /usuarios/:id/password` y `DELETE /usuarios/:id` (solo admin) |
 | Catálogo | `GET /controles?categoria=&q=` · `GET /controles/:id` · `POST /controles` y `PUT /controles/:id` (solo admin) |
 | Auditorías | `GET /auditorias` · `GET /auditorias/:id` · `POST /auditorias` · `PUT /auditorias/:id` · `PATCH /auditorias/:id/estado` · `GET /auditorias/:id/verificacion-cierre` · `PUT /auditorias/:id/seleccion-controles` |
 | Evaluación | `GET /auditorias/:id/evaluaciones` · `PUT /evaluaciones/:id` |
 | Evidencias | `POST /evaluaciones/:id/evidencias` · `DELETE /evidencias/:id` |
+| Archivos de evidencia (bucket, opcional) | `POST /evidencias/:id/archivo` (multipart, campo `archivo`) · `GET /evidencias/:id/archivo` (enlace temporal de 5 min) · `DELETE /evidencias/:id/archivo` |
 | Hallazgos | `GET /auditorias/:id/hallazgos` · `POST /evaluaciones/:id/hallazgos` · `PUT` y `DELETE /hallazgos/:id` |
 | Recomendaciones | `POST /hallazgos/:id/recomendaciones` · `PUT` y `DELETE /recomendaciones/:id` |
 | Resultados | `GET /auditorias/:id/indicadores` · `GET /auditorias/:id/trazabilidad` · `GET` y `POST /auditorias/:id/informes` · `GET /informes/:id` · `GET /dashboard?id_auditoria=` |
@@ -72,6 +73,7 @@ src/
 ├── database/               # DatabaseService (pool pg), InitDbService, scripts db:seed / db:security
 └── modules/
     ├── core/               # AuditLock (inmutabilidad CERRADA), indicadores RF07, verificación de cierre
+    ├── storage/            # bucket S3 de Railway (opcional): subir, borrar, enlaces prefirmados
     ├── health/ · auth/ · usuarios/
     ├── controles/          # catálogo de 93 controles (caché en memoria) — RF02
     ├── auditorias/         # CRUD, ciclo de vida y selección 10–15 — RF01, RN02, RN04, RN06
@@ -113,6 +115,38 @@ Valores en [`render.yaml`](render.yaml). Si el servicio se creó desde el panel,
 - **Start**: `node --max-old-space-size=384 dist/main.js`
 - **Health check**: `/api/health`
 - **Región**: Ohio (igual que Supabase). La región no se puede cambiar: si el servicio está en otra, hay que recrearlo.
-- **Variables**: `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET` (propio, nunca el del ejemplo), `JWT_EXPIRES_IN=8h`, `FRONTEND_URL`, `SWAGGER_ENABLED`, `DB_SSL_CA` (recomendada).
+- **Variables**: `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET` (propio, nunca el del ejemplo), `JWT_EXPIRES_IN=8h`, `FRONTEND_URL`, `SWAGGER_ENABLED`, `DB_SSL_CA` (recomendada) y, para los archivos de evidencias, las 4 del bucket (ver la sección siguiente).
 
 Medido localmente con el build de producción y todos los módulos: arranque en ~0,6 s, ~134 MB de RAM en reposo y ~157 MB tras 300 informes seguidos; los endpoints responden en 3–12 ms contra una BD local.
+
+## Archivos de evidencias en el bucket de Railway (opcional)
+Las evidencias pueden llevar un archivo real (PDF, imagen, Office, CSV, TXT, ZIP…) guardado en un **bucket S3 de Railway** (Storage Buckets). Es **opcional**: sin las variables, el backend arranca y funciona igual, y solo la carga de archivos responde `503`.
+
+**Variables** (Railway → servicio del bucket → pestaña *Credentials*):
+
+| Variable | Valor |
+| :--- | :--- |
+| `ENPOINT_URL` | `https://t3.storageapi.dev` (también se acepta `ENDPOINT_URL`) |
+| `BUCKET_NAME` | Nombre S3 del bucket (`BUCKET` en Railway, no el nombre visible) |
+| `ACCESS_KEY_BUCKET` | `ACCESS_KEY_ID` de Railway |
+| `SECRET_KEY_BUCKET` | `SECRET_ACCESS_KEY` de Railway |
+| `BUCKET_REGION` | Opcional, por defecto `auto` |
+| `BUCKET_URL_STYLE` | Opcional, `virtual` (por defecto) o `path` para buckets antiguos |
+| `EVIDENCIA_MAX_MB` | Opcional, tamaño máximo por archivo (por defecto 5, máximo 20) |
+
+**En Render**: servicio `decr27000-backend` → **Environment** → agregar `ENPOINT_URL`, `BUCKET_NAME`, `ACCESS_KEY_BUCKET` y `SECRET_KEY_BUCKET` → **Save changes** (Render redespliega). Verificación: `GET /api/health?db=1` debe responder `"storage":"UP"` (`"DISABLED"` si faltan variables, `"DOWN"` si las credenciales o el bucket fallan).
+
+**Cómo funciona**
+- `POST /api/evidencias/:id/archivo` con `multipart/form-data` y el archivo en el campo `archivo`. Adjunta o reemplaza (el anterior se borra del bucket). Bloqueado si la auditoría está `CERRADA` (403).
+- `GET /api/evidencias/:id/archivo` responde `{ url, expira_en_segundos, archivo_nombre, archivo_tipo, archivo_tamano }`: un enlace **prefirmado de 5 minutos** que descarga el archivo directo desde Railway (no pasa por Render, no gasta cómputo). Permitido también en auditorías cerradas.
+- `DELETE /api/evidencias/:id/archivo` quita el archivo y conserva la evidencia. Al borrar una evidencia, su archivo también se borra del bucket.
+- Las evidencias incluyen `tiene_archivo`, `archivo_nombre`, `archivo_tipo` y `archivo_tamano` en la evaluación, el anexo del informe y la trazabilidad. La clave interna del bucket nunca se expone.
+- Seguridad: el bucket es privado; el tipo MIME lo asigna el servidor según la extensión (lista blanca; sin HTML, SVG ni ejecutables); la clave del objeto es aleatoria; la descarga siempre es "adjunto".
+- Esquema: la migración `sql/migrations/001_evidencia_archivo.sql` agrega 4 columnas opcionales a `evidencia`. Se aplica sola al arrancar si faltan (también en Supabase al desplegar en Render).
+- Liviano: usa `aws4fetch` (firma SigV4 con `fetch` nativo) y solo se carga si el bucket está configurado. Medido: ~108 MB de RAM con el bucket activo.
+
+Ejemplo con `curl`:
+```bash
+curl -H "Authorization: Bearer $TOKEN" -F "archivo=@Politica.pdf" http://localhost:4000/api/evidencias/1/archivo
+curl -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/evidencias/1/archivo   # → data.url (5 min)
+```
