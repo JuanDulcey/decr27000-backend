@@ -107,14 +107,19 @@ export class StorageService implements OnModuleInit {
     }
   }
 
-  /** URL prefirmada de descarga (por defecto 5 minutos) que fuerza "descargar como" con el nombre original. */
-  async presignedDownload(key: string, filename: string, expiresSeconds = 300): Promise<string> {
+  /** URL prefirmada (por defecto 5 minutos) como adjunto o inline para vista previa. */
+  async presignedDownload(
+    key: string,
+    filename: string,
+    expiresSeconds = 300,
+    disposition: 'attachment' | 'inline' = 'attachment',
+  ): Promise<string> {
     const aws = await this.aws();
     const url = this.objectUrl(key);
     const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
     url.searchParams.set(
       'response-content-disposition',
-      `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
     url.searchParams.set('X-Amz-Expires', String(expiresSeconds));
     const signed = await aws.sign(url.toString(), { method: 'GET', aws: { signQuery: true } });

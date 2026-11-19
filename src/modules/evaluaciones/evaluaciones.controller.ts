@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-node';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -70,9 +70,9 @@ export class EvaluacionesController {
 
   @ApiTags('evidencias')
   @Get('evidencias/:id/archivo')
-  @ApiOperation({ summary: 'Enlace de descarga temporal (5 min) del archivo de la evidencia' })
-  enlaceDescarga(@Param('id', IdPipe) id: number) {
-    return this.evidencias.enlaceDescarga(id);
+  @ApiOperation({ summary: 'Enlace de descarga o vista previa temporal (5 min) del archivo de la evidencia' })
+  enlaceDescarga(@Param('id', IdPipe) id: number, @Query('inline') inline?: string) {
+    return this.evidencias.enlaceDescarga(id, inline === '1' || inline === 'true');
   }
 
   @ApiTags('evidencias')

@@ -158,15 +158,22 @@ export class EvidenciasService {
     }
   }
 
-  /** Enlace prefirmado de descarga (5 min). Se permite también en auditorías CERRADAS (solo lectura). */
-  async enlaceDescarga(idEvidencia: number) {
+  /** Enlace prefirmado de descarga o vista previa (5 min). Se permite también en auditorías CERRADAS. */
+  async enlaceDescarga(idEvidencia: number, inline = false) {
     await this.lock.resolve('evidencia', idEvidencia);
     const ev = await this.db.one<{ archivo_key: string | null; archivo_nombre: string; archivo_tipo: string; archivo_tamano: number }>(
       'SELECT archivo_key, archivo_nombre, archivo_tipo, archivo_tamano FROM evidencia WHERE id_evidencia = $1',
       [idEvidencia],
     );
     if (!ev?.archivo_key) throw AppError.notFound('La evidencia no tiene un archivo adjunto.');
-    const url = await this.storage.presignedDownload(ev.archivo_key, ev.archivo_nombre, DESCARGA_SEGUNDOS);
+    const esPrevisualizable =
+      ev.archivo_tipo.startsWith('image/') ||
+      ev.archivo_tipo.startsWith('video/') ||
+      ev.archivo_tipo.startsWith('text/') ||
+      ev.archivo_tipo === 'application/pdf' ||
+      ev.archivo_tipo === 'application/json';
+    const disposition = inline && esPrevisualizable ? 'inline' : 'attachment';
+    const url = await this.storage.presignedDownload(ev.archivo_key, ev.archivo_nombre, DESCARGA_SEGUNDOS, disposition);
     return {
       url,
       expira_en_segundos: DESCARGA_SEGUNDOS,
