@@ -183,6 +183,18 @@ export class EvidenciasService {
     };
   }
 
+  /** Obtiene los bytes del archivo desde el bucket para vista previa autenticada (PDF/texto). */
+  async obtenerContenido(idEvidencia: number): Promise<{ buffer: Uint8Array; archivo_nombre: string; archivo_tipo: string }> {
+    await this.lock.resolve('evidencia', idEvidencia);
+    const ev = await this.db.one<{ archivo_key: string | null; archivo_nombre: string; archivo_tipo: string }>(
+      'SELECT archivo_key, archivo_nombre, archivo_tipo FROM evidencia WHERE id_evidencia = $1',
+      [idEvidencia],
+    );
+    if (!ev?.archivo_key) throw AppError.notFound('La evidencia no tiene un archivo adjunto.');
+    const buffer = await this.storage.get(ev.archivo_key);
+    return { buffer, archivo_nombre: ev.archivo_nombre, archivo_tipo: ev.archivo_tipo };
+  }
+
   /** Quita el archivo de la evidencia (la evidencia se conserva). */
   async quitarArchivo(idEvidencia: number): Promise<Evidencia> {
     const { evidencia, key } = await this.db.withTransaction(async (client) => {

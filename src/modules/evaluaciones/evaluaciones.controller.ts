@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-node';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AppEnv } from '../../config/env.js';
 import type { ArchivoSubido } from './archivos.js';
-import { ApiMessage } from '../../common/decorators.js';
+import { ApiMessage, RawResponse } from '../../common/decorators.js';
 import { IdPipe } from '../../common/dto-helpers.js';
 import { EvaluacionDto, EvidenciaDto } from './evaluaciones.dto.js';
 import { EvaluacionesService } from './evaluaciones.service.js';
@@ -73,6 +73,19 @@ export class EvaluacionesController {
   @ApiOperation({ summary: 'Enlace de descarga o vista previa temporal (5 min) del archivo de la evidencia' })
   enlaceDescarga(@Param('id', IdPipe) id: number, @Query('inline') inline?: string) {
     return this.evidencias.enlaceDescarga(id, inline === '1' || inline === 'true');
+  }
+
+  @ApiTags('evidencias')
+  @Get('evidencias/:id/contenido')
+  @RawResponse()
+  @ApiOperation({ summary: 'Contenido del archivo para vista previa autenticada sin bloqueo de iframe' })
+  async contenidoArchivo(@Param('id', IdPipe) id: number): Promise<StreamableFile> {
+    const { buffer, archivo_nombre, archivo_tipo } = await this.evidencias.obtenerContenido(id);
+    const ascii = archivo_nombre.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+    return new StreamableFile(buffer, {
+      type: archivo_tipo,
+      disposition: `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(archivo_nombre)}`,
+    });
   }
 
   @ApiTags('evidencias')

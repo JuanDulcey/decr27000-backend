@@ -96,6 +96,20 @@ export class StorageService implements OnModuleInit {
     }
   }
 
+  async get(key: string): Promise<Uint8Array> {
+    const aws = await this.aws();
+    const res = await aws.fetch(this.objectUrl(key).toString(), { method: 'GET' });
+    if (res.status === 404) {
+      throw AppError.notFound('El archivo no se encontró en el almacenamiento.');
+    }
+    if (!res.ok) {
+      const detalle = (await res.text().catch(() => '')).slice(0, 300);
+      this.logger.error(`GET ${key} → HTTP ${res.status} ${detalle}`);
+      throw AppError.badGateway('No se pudo obtener el archivo desde el almacenamiento.');
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
   /** Borra el objeto; los errores se registran pero no interrumpen (limpieza best-effort). */
   async remove(key: string): Promise<void> {
     try {
