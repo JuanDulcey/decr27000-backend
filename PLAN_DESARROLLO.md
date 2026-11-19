@@ -13,7 +13,7 @@
 | Pieza | Estado actual | Implicación |
 | :--- | :--- | :--- |
 | Backend en Render (`https://decr27000-backend.onrender.com`) | En línea. Solo `index.js` con `http` nativo: responde `GET /api/health` y `/`. `package.json` sin dependencias. | Hay que construir toda la API. El pipeline de despliegue ya funciona (pnpm). |
-| Frontend en Vercel (`https://decr27000-frontend.vercel.app`) | **Actualizado el 13-nov**: las 8 páginas ya están construidas (login, dashboard, auditoría, catálogo, evaluación, hallazgos, informe y 404), con Playwright E2E. Mientras el backend no tenga los endpoints, **funciona con un motor local en `localStorage`** (ver 2.7). | El trabajo pendiente está sobre todo en el backend; el frontend se va conectando al backend real (tareas F-INT). |
+| Frontend en Vercel (`https://decr27000-frontend.vercel.app`) | **Actualizado el 14-nov**: usa solo el backend real (motor local eliminado). *13-nov*: las 8 páginas ya están construidas (login, dashboard, auditoría, catálogo, evaluación, hallazgos, informe y 404), con Playwright E2E. Mientras el backend no tenga los endpoints, **funciona con un motor local en `localStorage`** (ver 2.7). | El trabajo pendiente está sobre todo en el backend; el frontend se va conectando al backend real (tareas F-INT). |
 | Base de datos Supabase (PostgreSQL 17, Session Pooler) | Existen las 8 tablas (`usuario`, `control`, `auditoria`, `evaluacion_control`, `evidencia`, `hallazgo`, `recomendacion`, `informe`). **No se verificó el contenido.** | Se desconoce si tiene la semilla corregida (ISO 19011:2026 y nombres de controles) y si las contraseñas están hasheadas. Se resuelve en la tarea `B1.3`. |
 | Semilla `SEED_93_CONTROLES_Y_EMPRESA_ABC.sql` | Corregida y probada en PostgreSQL 16: 93 controles (37/8/14/34), Empresa ABC con 13 controles, CP-09 da 33,3 % y 54,2 %. | Lista para usar. |
 | Especificaciones | Completas: modelo de datos, reglas RN01–RN07, contrato de API, 7 pantallas, CP-01 a CP-13. | Este plan las ordena en el tiempo y añade lo necesario para producción. |
@@ -189,11 +189,13 @@ Render gratuito ofrece **512 MB de RAM y 0,1 de CPU**, **suspende el servicio tr
 
 En ese modo el login acepta la clave fija `Audit2026*`, devuelve un token falso (`demo-jwt-token-…`) y guarda auditorías, evidencias y hallazgos en el navegador de cada persona.
 
-Tareas de integración (se van cerrando a medida que el backend Nest publica endpoints):
-- [ ] **F-INT.1** Cuando un endpoint exista en el backend, comprobarlo con el modo `remote-strict` (selector en `login.html`) para que no caiga al motor local.
-- [ ] **F-INT.2** Al terminar el I2, quitar la caída automática por errores de red (caso 3): un error de red debe mostrarse como error, no guardar datos en `localStorage` en silencio, porque si no, los datos de la auditoría se dividen entre Supabase y el navegador.
-- [ ] **F-INT.3** Antes de la sustentación, dejar `remote-strict` como modo por defecto y conservar el modo `local` solo como opción manual de respaldo (documentada) si Render o Supabase fallan.
-- [ ] **F-INT.4** Cambiar en `package.json` los scripts `npx serve` por `serve . -l 3000` (el paquete ya está en `devDependencies`), según la regla "solo pnpm".
+> **Resuelto (14-nov-2026)**: el frontend quedó en `remote-strict` por defecto, sin caída silenciosa y sin el motor local (`js/seed-data.js` eliminado); todas las pantallas usan el backend real.
+
+Tareas de integración (cerradas):
+- [x] **F-INT.1** Cuando un endpoint exista en el backend, comprobarlo con el modo `remote-strict` (selector en `login.html`) para que no caiga al motor local.
+- [x] **F-INT.2** Al terminar el I2, quitar la caída automática por errores de red (caso 3): un error de red debe mostrarse como error, no guardar datos en `localStorage` en silencio, porque si no, los datos de la auditoría se dividen entre Supabase y el navegador.
+- [x] **F-INT.3** Antes de la sustentación, dejar `remote-strict` como modo por defecto y conservar el modo `local` solo como opción manual de respaldo (documentada) si Render o Supabase fallan.
+- [x] **F-INT.4** Cambiar en `package.json` los scripts `npx serve` por `serve . -l 3000` (el paquete ya está en `devDependencies`), según la regla "solo pnpm".
 
 ---
 
@@ -222,6 +224,8 @@ flowchart LR
 
 #### Backend
 > **Avance (13-nov-2026): el backend de los 3 incrementos está implementado** (B1.0–B1.10, B2.1–B2.6, B3.1–B3.4 y B3.6) en `main` local del backend. Pruebas: 14 unitarias + 77 e2e (CP-01 a CP-13 contra PostgreSQL en Docker), 10/10 E2E del frontend en modo `remote-strict` contra el backend real y un recorrido completo por la interfaz (36 llamadas a la API, 0 errores). Medido: arranque 0,6 s, ~134–157 MB de RAM, 3–12 ms por endpoint con BD local. Pendiente: B3.5 (índices y revisión final, ver abajo), B3.7 (opcional), B1.4 (descartada) y `DB_SSL_CA` (opcional para la demo).
+>
+> **Avance (18-nov-2026)**: CRUD de usuarios para el admin (aporte del equipo) e **integración del bucket S3 de Railway** para los archivos de evidencias (`POST/GET/DELETE /api/evidencias/:id/archivo`), opcional: sin las variables el backend arranca igual. Probado con un S3 falso en las e2e y contra el bucket real de Railway (subir, descargar con enlace prefirmado, reemplazar y quitar). Pruebas: 22 unitarias + 89 e2e. Para activarlo en producción solo falta agregar las 4 variables del bucket en Render.
 >
 > *Avance anterior (13-nov, base)*: B1.0, B1.1, B1.2, B1.3, B1.5 y B1.6; Supabase restaurada con la semilla corregida y login real funcionando.
 
@@ -466,6 +470,7 @@ flowchart LR
 | P5 | Sesión | **JWT en `localStorage`**, expiración de 8 h | B1.6, F1.2. Obliga a escapar todo lo que se pinta (sin `innerHTML` con datos de la API). |
 | P6 | Restaurar la demo en producción | **Sí: solo admin + `ALLOW_SEED_RESET=true` + frase de confirmación** | B3.4, F3.1. |
 | P7 | PDF del informe | **Sí: `window.print()` como principal y html2pdf como alternativa** | F3.2. |
+| P8 | Archivos de evidencia | **Bucket S3 de Railway, opcional** (variables `ENPOINT_URL`, `BUCKET_NAME`, `ACCESS_KEY_BUCKET`, `SECRET_KEY_BUCKET`) | BACKEND_SPEC §6.10, README del backend; UI pendiente en el frontend (FRONTEND_SPEC §8). |
 | P13 | Tamaño del equipo | **4 integrantes** (pendiente confirmar con el profesor: el curso dice máximo 3) | Sección 2.5: dos parejas por repositorio. |
 
 ### 6.2. Por defecto (se aplica la recomendación mientras nadie diga lo contrario)
@@ -474,7 +479,6 @@ flowchart LR
 | :---: | :--- | :--- | :--- |
 | P2 | ¿Swagger (`/api/docs`) en producción? | **Activo durante el curso** (`SWAGGER_ENABLED=true`) | Permite mostrar y probar el contrato de API en la sustentación. Las rutas siguen protegidas con JWT. Se apaga con una variable. |
 | P3 | ¿Validación con `class-validator` o con zod? | **class-validator** | Es lo nativo de Nest con el `ValidationPipe`, y Swagger documenta los DTOs automáticamente. |
-| P8 | ¿Subir archivos de evidencia o solo la referencia? | **Solo referencia en el MVP**; Supabase Storage como opcional al final del I3 | Las evidencias son simuladas y el curso no exige archivos; subirlos suma complejidad y no suma a la rúbrica. |
 | P9 | ¿Qué pruebas automatizar? | **Backend con Vitest + supertest y E2E del frontend con Playwright** | "Pruebas y calidad" vale 10 % y el informe de pruebas es un entregable: las pruebas automáticas son la evidencia de CP-01 a CP-13. |
 | P10 | ¿CORS abierto o con lista blanca? | **Lista blanca** (`FRONTEND_URL`, previews de Vercel del proyecto, localhost) | Es la práctica correcta y suma en "seguridad básica". |
 | P11 | ¿Flujo de ramas? | **Ramas + PR con revisión cruzada y preview de Vercel** | Con 4 personas en 2 repos evita pisarse, deja trazabilidad del aporte de cada uno y protege la demo desplegada. |
