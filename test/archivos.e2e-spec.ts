@@ -127,6 +127,20 @@ describe('Archivos de evidencias en el bucket S3 (RF04, PLAN P8)', () => {
     expect(objetos.get(despues[0])?.tipo).toBe('text/csv; charset=utf-8');
   });
 
+  it('permite adjuntar videos (.mp4) con Content-Type video/mp4', async () => {
+    const mp4 = Buffer.from('\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom');
+    const res = await request(http)
+      .post('/api/evidencias/1/archivo')
+      .set(auth())
+      .attach('archivo', mp4, { filename: 'recorrido-datacenter.mp4', contentType: 'video/mp4' })
+      .expect(201);
+    expect(res.body.data).toMatchObject({
+      tiene_archivo: true,
+      archivo_nombre: 'recorrido-datacenter.mp4',
+      archivo_tipo: 'video/mp4',
+    });
+  });
+
   it('rechaza tipos no permitidos, archivos vacíos o ausentes, el campo equivocado y el tamaño máximo', async () => {
     const html = await request(http).post('/api/evidencias/2/archivo').set(auth())
       .attach('archivo', Buffer.from('<script>alert(1)</script>'), 'x.html').expect(400);
