@@ -135,6 +135,15 @@ describe('Resultados de Empresa ABC (RF07, RF08, RF09, RNF05)', () => {
     }
   });
 
+  it('sin bucket configurado: el backend funciona y la carga de archivos responde 503', async () => {
+    const health = await a.get('/api/health?db=1').expect(200);
+    expect(health.body).toMatchObject({ ok: true, db: 'UP', storage: 'DISABLED' });
+    const ev = await a.get('/api/auditorias/1/evaluaciones').expect(200);
+    expect(ev.body.data[0].evidencias[0]).toMatchObject({ tiene_archivo: false, archivo_nombre: null });
+    const res = await a.post('/api/evidencias/1/archivo').expect(503);
+    expect(res.body.error).toMatch(/almacenamiento de archivos no está configurado/);
+  });
+
   it('el admin también puede consultar todo', async () => {
     const admin = api(app, await loginAs(app, ADMIN));
     await admin.get('/api/auditorias').expect(200);
