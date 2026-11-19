@@ -37,4 +37,12 @@ export class AppError extends HttpException {
   static tooManyRequests(message: string): AppError {
     return new AppError(HttpStatus.TOO_MANY_REQUESTS, message);
   }
+
+  static badGateway(message: string): AppError {
+    return new AppError(HttpStatus.BAD_GATEWAY, message);
+  }
+
+  static serviceUnavailable(message: string): AppError {
+    return new AppError(HttpStatus.SERVICE_UNAVAILABLE, message);
+  }
 }

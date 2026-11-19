@@ -76,6 +76,10 @@ CREATE TABLE evidencia (
   fecha_evidencia  DATE NOT NULL DEFAULT CURRENT_DATE,
   referencia_url   TEXT,
   es_simulada      BOOLEAN NOT NULL DEFAULT TRUE,
+  archivo_key      TEXT,                 -- clave del archivo en el bucket S3 (opcional)
+  archivo_nombre   VARCHAR(255),         -- nombre original del archivo
+  archivo_tipo     VARCHAR(120),         -- tipo MIME
+  archivo_tamano   INTEGER CHECK (archivo_tamano IS NULL OR archivo_tamano >= 0),
   creado_en        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

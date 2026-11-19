@@ -32,3 +32,15 @@ services:
         value: "true"
       - key: ALLOW_SEED_RESET
         value: "false"
+      # Bucket S3 de Railway (opcional): sin estas variables el backend arranca igual
+      # y la carga de archivos de evidencias responde 503.
+      - key: ENPOINT_URL
+        value: https://t3.storageapi.dev
+      - key: BUCKET_NAME
+        sync: false
+      - key: ACCESS_KEY_BUCKET
+        sync: false
+      - key: SECRET_KEY_BUCKET
+        sync: false
+      - key: EVIDENCIA_MAX_MB
+        value: "5"

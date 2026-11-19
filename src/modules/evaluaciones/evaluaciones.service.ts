@@ -22,7 +22,9 @@ SELECT e.id_evaluacion, e.id_auditoria, e.id_control, e.estado, e.observacion, e
                   'id_evidencia', ev.id_evidencia, 'id_evaluacion', ev.id_evaluacion,
                   'codigo_evidencia', ev.codigo_evidencia, 'descripcion', ev.descripcion,
                   'fuente', ev.fuente, 'fecha_evidencia', ev.fecha_evidencia,
-                  'referencia_url', ev.referencia_url, 'es_simulada', ev.es_simulada)
+                  'referencia_url', ev.referencia_url, 'es_simulada', ev.es_simulada,
+                  'archivo_nombre', ev.archivo_nombre, 'archivo_tipo', ev.archivo_tipo,
+                  'archivo_tamano', ev.archivo_tamano, 'tiene_archivo', ev.archivo_key IS NOT NULL)
                 ORDER BY ev.id_evidencia)
          FROM evidencia ev WHERE ev.id_evaluacion = e.id_evaluacion), '[]') AS evidencias,
        COALESCE((

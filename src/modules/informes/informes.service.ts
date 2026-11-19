@@ -13,6 +13,7 @@ SELECT a.id_auditoria, a.organizacion,
        e.id_evaluacion, e.estado, e.observacion, e.justificacion_na,
        ev.id_evidencia, ev.codigo_evidencia, ev.descripcion AS evidencia_descripcion,
        ev.fuente AS evidencia_fuente, ev.es_simulada,
+       ev.archivo_nombre AS evidencia_archivo, (ev.archivo_key IS NOT NULL) AS evidencia_tiene_archivo,
        h.id_hallazgo, h.codigo AS hallazgo_codigo, h.severidad AS hallazgo_severidad,
        h.condicion AS hallazgo_condicion,
        r.id_recomendacion, r.descripcion AS recomendacion_descripcion,
@@ -64,6 +65,7 @@ ORDER BY SPLIT_PART(h.codigo, '-', 2)::INT, r.id_recomendacion`;
 const SQL_EVIDENCIAS = `
 SELECT ev.id_evidencia, ev.id_evaluacion, ev.codigo_evidencia, ev.descripcion, ev.fuente,
        ev.fecha_evidencia, ev.referencia_url, ev.es_simulada,
+       ev.archivo_nombre, ev.archivo_tipo, ev.archivo_tamano, (ev.archivo_key IS NOT NULL) AS tiene_archivo,
        c.codigo_iso, c.nombre AS control_nombre
 FROM evidencia ev
 JOIN evaluacion_control e ON e.id_evaluacion = ev.id_evaluacion

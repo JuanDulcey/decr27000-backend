@@ -6,6 +6,32 @@ import type pg from 'pg';
 const ROOT_DIR = path.resolve(import.meta.dirname, '..', '..');
 export const SEED_FILE = path.join(ROOT_DIR, 'SEED_93_CONTROLES_Y_EMPRESA_ABC.sql');
 export const SECURITY_FILE = path.join(ROOT_DIR, 'sql', 'security.sql');
+export const MIGRATIONS_DIR = path.join(ROOT_DIR, 'sql', 'migrations');
+
+/**
+ * Migraciones incrementales sobre una BD que ya existe (la semilla ya trae el esquema final).
+ * Cada una declara cómo saber si ya está aplicada, así el arranque solo hace una consulta
+ * barata y ejecuta el ALTER únicamente cuando falta (PLAN §2.6, O8).
+ */
+const MIGRATIONS: Array<{ file: string; applied: string }> = [
+  {
+    file: '001_evidencia_archivo.sql',
+    applied: `SELECT COUNT(*) = 4 AS ok FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'evidencia'
+                AND column_name IN ('archivo_key', 'archivo_nombre', 'archivo_tipo', 'archivo_tamano')`,
+  },
+];
+
+export async function applyPendingMigrations(db: Pick<pg.Pool, 'query'>): Promise<string[]> {
+  const aplicadas: string[] = [];
+  for (const m of MIGRATIONS) {
+    const { rows } = await db.query<{ ok: boolean }>(m.applied);
+    if (rows[0]?.ok) continue;
+    await db.query(await readFile(path.join(MIGRATIONS_DIR, m.file), 'utf8'));
+    aplicadas.push(m.file);
+  }
+  return aplicadas;
+}
 
 const BCRYPT_COST = 10;
 

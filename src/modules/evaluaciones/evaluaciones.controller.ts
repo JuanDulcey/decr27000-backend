@@ -1,5 +1,9 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Put } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { FileInterceptor } from '@nestjs/platform-node';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { AppEnv } from '../../config/env.js';
+import type { ArchivoSubido } from './archivos.js';
 import { ApiMessage } from '../../common/decorators.js';
 import { IdPipe } from '../../common/dto-helpers.js';
 import { EvaluacionDto, EvidenciaDto } from './evaluaciones.dto.js';
@@ -13,6 +17,7 @@ export class EvaluacionesController {
   constructor(
     @Inject(EvaluacionesService) private readonly evaluaciones: EvaluacionesService,
     @Inject(EvidenciasService) private readonly evidencias: EvidenciasService,
+    @Inject(ConfigService) private readonly config: ConfigService<AppEnv, true>,
   ) {}
 
   @Get('auditorias/:id/evaluaciones')
@@ -41,5 +46,40 @@ export class EvaluacionesController {
   async removeEvidencia(@Param('id', IdPipe) id: number) {
     const evidencia = await this.evidencias.remove(id);
     return new ApiMessage(`Evidencia ${evidencia.codigo_evidencia} eliminada.`, evidencia);
+  }
+
+  @ApiTags('evidencias')
+  @Post('evidencias/:id/archivo')
+  @UseInterceptors(FileInterceptor('archivo'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', properties: { archivo: { type: 'string', format: 'binary' } }, required: ['archivo'] },
+  })
+  @ApiOperation({ summary: 'Adjuntar o reemplazar el archivo de una evidencia (bucket S3, máx. EVIDENCIA_MAX_MB)' })
+  async adjuntarArchivo(@Param('id', IdPipe) id: number, @UploadedFile() archivo?: ArchivoSubido) {
+    const evidencia = await this.evidencias.adjuntarArchivo(
+      id,
+      archivo,
+      this.config.get('EVIDENCIA_MAX_MB', { infer: true }),
+    );
+    return new ApiMessage(
+      `Archivo "${evidencia.archivo_nombre}" adjuntado a la evidencia ${evidencia.codigo_evidencia}.`,
+      evidencia,
+    );
+  }
+
+  @ApiTags('evidencias')
+  @Get('evidencias/:id/archivo')
+  @ApiOperation({ summary: 'Enlace de descarga temporal (5 min) del archivo de la evidencia' })
+  enlaceDescarga(@Param('id', IdPipe) id: number) {
+    return this.evidencias.enlaceDescarga(id);
+  }
+
+  @ApiTags('evidencias')
+  @Delete('evidencias/:id/archivo')
+  @ApiOperation({ summary: 'Quitar el archivo de la evidencia (la evidencia se conserva)' })
+  async quitarArchivo(@Param('id', IdPipe) id: number) {
+    const evidencia = await this.evidencias.quitarArchivo(id);
+    return new ApiMessage(`Archivo quitado de la evidencia ${evidencia.codigo_evidencia}.`, evidencia);
   }
 }

@@ -76,7 +76,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof body === 'string' ? body : (body as { message?: string | string[] }).message;
       error = Array.isArray(message) ? message[0] : (message ?? exception.message);
       if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
-        error = 'El cuerpo de la petición supera el tamaño máximo permitido.';
+        error =
+          error === 'File too large'
+            ? 'El archivo supera el tamaño máximo permitido.'
+            : 'El cuerpo de la petición supera el tamaño máximo permitido.';
+      } else if (/^(Unexpected (file )?field|Too many files)/.test(error)) {
+        // Errores de multer (campo distinto de "archivo" o más de un archivo).
+        error = 'Envíe un solo archivo en el campo "archivo" del formulario.';
       }
     } else {
       const mapped = fromPostgres(exception as PgError);

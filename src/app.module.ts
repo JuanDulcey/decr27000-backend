@@ -17,6 +17,7 @@ import { HallazgosModule } from './modules/hallazgos/hallazgos.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { InformesModule } from './modules/informes/informes.module.js';
 import { SeedModule } from './modules/seed/seed.module.js';
+import { StorageModule } from './modules/storage/storage.module.js';
 import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
 
 @Module({
@@ -30,6 +31,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     }),
     DatabaseModule,
     CoreModule,
+    StorageModule,
     HealthModule,
     AuthModule,
     UsuariosModule,

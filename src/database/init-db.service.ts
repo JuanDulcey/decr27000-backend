@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { DatabaseService } from './database.service.js';
-import { runFullSeed } from './seed-runner.js';
+import { applyPendingMigrations, runFullSeed } from './seed-runner.js';
 
 /**
  * Arranque liviano (PLAN §2.6, O8): solo comprueba que exista el catálogo.
@@ -19,6 +19,8 @@ export class InitDbService implements OnApplicationBootstrap {
       if (exists?.t) {
         const row = await this.db.one<{ total: number }>('SELECT COUNT(*)::int AS total FROM control');
         if ((row?.total ?? 0) > 0) {
+          const aplicadas = await applyPendingMigrations(this.db.pool);
+          if (aplicadas.length > 0) this.logger.log(`Migraciones aplicadas: ${aplicadas.join(', ')}.`);
           this.logger.log(`Base de datos lista: ${row?.total} controles en el catálogo.`);
           return;
         }

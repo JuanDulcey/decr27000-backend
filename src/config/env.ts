@@ -16,6 +16,20 @@ export interface AppEnv {
   CORS_ORIGINS: string[];
   ALLOW_SEED_RESET: boolean;
   SWAGGER_ENABLED: boolean;
+  /** Bucket S3 (Railway) para los archivos de evidencias. null = no configurado (opcional). */
+  STORAGE: StorageConfig | null;
+  /** Variables del bucket que faltan cuando la configuración está incompleta (para avisar en el log). */
+  STORAGE_MISSING: string[];
+  EVIDENCIA_MAX_MB: number;
+}
+
+export interface StorageConfig {
+  endpoint: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  urlStyle: 'virtual' | 'path';
 }
 
 /** Valor público del .env.example: nunca debe usarse en producción. */
@@ -45,6 +59,36 @@ const list = (value: unknown): string[] =>
     .map((item) => item.trim().replace(/\/+$/, ''))
     .filter((item) => item.length > 0 && item !== '*');
 
+/** Primer valor no vacío entre varios nombres posibles de una variable. */
+const first = (raw: Record<string, unknown>, ...names: string[]): string => {
+  for (const name of names) {
+    const value = str(raw[name]).trim();
+    if (value) return value;
+  }
+  return '';
+};
+
+/**
+ * Bucket S3 compatible (Railway Storage Buckets, PLAN P8). Es OPCIONAL: si no están las
+ * cuatro variables, el backend arranca igual y la subida de archivos responde 503.
+ * Acepta los nombres del .env del equipo (ENPOINT_URL, ACCESS_KEY_BUCKET, SECRET_KEY_BUCKET)
+ * y los nombres BUCKET_* canónicos.
+ */
+export function readStorage(raw: Record<string, unknown>): { config: StorageConfig | null; missing: string[] } {
+  const endpoint = first(raw, 'BUCKET_ENDPOINT', 'ENDPOINT_URL', 'ENPOINT_URL').replace(/\/+$/, '');
+  const bucket = first(raw, 'BUCKET_NAME');
+  const accessKeyId = first(raw, 'BUCKET_ACCESS_KEY_ID', 'ACCESS_KEY_BUCKET');
+  const secretAccessKey = first(raw, 'BUCKET_SECRET_ACCESS_KEY', 'SECRET_KEY_BUCKET');
+  const values = { ENDPOINT_URL: endpoint, BUCKET_NAME: bucket, ACCESS_KEY_BUCKET: accessKeyId, SECRET_KEY_BUCKET: secretAccessKey };
+  const missing = Object.entries(values).filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length > 0) return { config: null, missing: missing.length === 4 ? [] : missing };
+  const urlStyle = first(raw, 'BUCKET_URL_STYLE').toLowerCase() === 'path' ? 'path' : 'virtual';
+  return {
+    config: { endpoint, bucket, accessKeyId, secretAccessKey, region: first(raw, 'BUCKET_REGION') || 'auto', urlStyle },
+    missing: [],
+  };
+}
+
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
   const errors: string[] = [];
   const nodeEnvRaw = str(raw.NODE_ENV, 'development');
@@ -67,6 +111,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     throw new Error(`Configuración inválida:\n - ${errors.join('\n - ')}`);
   }
 
+  const storage = readStorage(raw);
+
   const FRONTEND_URL = str(raw.FRONTEND_URL, 'https://decr27000-frontend.vercel.app')
     .trim()
     .replace(/\/+$/, '');
@@ -83,5 +129,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     CORS_ORIGINS: list(raw.CORS_ORIGINS ?? raw.CORS_ORIGIN),
     ALLOW_SEED_RESET: bool(raw.ALLOW_SEED_RESET, false),
     SWAGGER_ENABLED: bool(raw.SWAGGER_ENABLED, NODE_ENV !== 'production'),
+    STORAGE: storage.config,
+    STORAGE_MISSING: storage.missing,
+    EVIDENCIA_MAX_MB: Math.min(int(raw.EVIDENCIA_MAX_MB, 5), 20),
   };
 }
